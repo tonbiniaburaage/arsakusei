@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>幻想クラゲ動画 AR</title>
+<style>
+  html,body{
+    margin:0;width:100%;height:100%;overflow:hidden;background:#050719;
+    font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif
+  }
+  #camera{
+    position:fixed;inset:0;width:100%;height:100%;object-fit:cover;background:#050719
+  }
+  #fx{
+    position:fixed;inset:0;width:100%;height:100%;pointer-events:none
+  }
+  #guide{
+    position:fixed;inset:0;display:grid;place-items:center;pointer-events:none;
+    transition:opacity .35s
+  }
+  #frame{
+    width:min(70vw,330px);height:min(70vw,330px);
+    border:1.5px solid rgba(236,240,255,.85);border-radius:43%;
+    box-shadow:0 0 0 9999px rgba(3,6,24,.16),0 0 28px rgba(165,183,255,.55)
+  }
+  #status{
+    position:fixed;z-index:5;top:max(14px,env(safe-area-inset-top));
+    left:50%;transform:translateX(-50%);
+    color:#fff;background:rgba(4,7,26,.62);backdrop-filter:blur(9px);
+    border:1px solid rgba(255,255,255,.14);padding:9px 14px;border-radius:999px;
+    font-size:14px;white-space:nowrap
+  }
+  #controls{
+    position:fixed;z-index:5;left:14px;right:14px;
+    bottom:max(18px,env(safe-area-inset-bottom));
+    display:flex;justify-content:center;gap:10px
+  }
+  button{
+    border:0;border-radius:999px;padding:13px 18px;font-size:16px;font-weight:700;
+    box-shadow:0 8px 24px rgba(0,0,0,.25)
+  }
+  #start{background:#fff;color:#19172f}
+  #demo{display:none;background:rgba(112,91,226,.94);color:#fff}
+  #meter{
+    position:fixed;z-index:5;left:50%;bottom:84px;transform:translateX(-50%);
+    width:min(70vw,320px);height:6px;border-radius:999px;overflow:hidden;
+    background:rgba(255,255,255,.22)
+  }
+  #meterFill{
+    width:0;height:100%;background:linear-gradient(90deg,#aaa7ff,#efeaff);
+    transition:width .1s
+  }
+  #note{
+    position:fixed;z-index:5;left:12px;right:12px;bottom:108px;
+    color:rgba(255,255,255,.9);font-size:12px;text-align:center;
+    text-shadow:0 1px 5px #000
+  }
+  #sourceVideo{display:none}
+</style>
+</head>
+<body>
+<video id="camera" autoplay muted playsinline></video>
+<video id="sourceVideo" src="douga.mp4" muted playsinline preload="auto"></video>
+<canvas id="fx"></canvas>
+
+<div id="guide"><div id="frame"></div></div>
+<div id="status">「開始」を押してカメラを許可</div>
+<div id="meter"><div id="meterFill"></div></div>
+<div id="note">紫色のレジンクラゲを枠の中央に入れてください</div>
+<div id="controls">
+  <button id="start">開始</button>
+  <button id="demo">手動で演出</button>
+</div>
+
+<script>
+const cameraVideo=document.getElementById("camera");
+const sourceVideo=document.getElementById("sourceVideo");
+const canvas=document.getElementById("fx");
+const ctx=canvas.getContext("2d");
+const statusEl=document.getElementById("status");
+const startBtn=document.getElementById("start");
+const demoBtn=document.getElementById("demo");
+const guide=document.getElementById("guide");
+const meterFill=document.getElementById("meterFill");
+
+const off=document.createElement("canvas");
+off.width=576;
+off.height=384;
+const offCtx=off.getContext("2d",{willReadFrequently:true});
+
+let dpr=Math.min(devicePixelRatio||1,1.5);
+function resize(){
+  canvas.width=innerWidth*dpr;
+  canvas.height=innerHeight*dpr;
+  canvas.style.width=innerWidth+"px";
+  canvas.style.height=innerHeight+"px";
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+resize();
+addEventListener("resize",resize);
+
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const ease=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
+const rand=(a,b)=>a+Math.random()*(b-a);
+
+let active=false;
+let startedAt=0;
+let cooldownUntil=0;
+let lastKeyTime=-1;
+let keyedFrame=null;
+let particles=[];
+
+function resetParticles(){
+  particles=[];
+  for(let i=0;i<60;i++){
+    particles.push({
+      angle:rand(0,Math.PI*2),
+      radius:rand(10,150),
+      speed:rand(.3,1.2),
+      size:rand(1,4),
+      phase:rand(0,Math.PI*2)
+    });
+  }
+}
+
+function keyVideoFrame(){
+  if(sourceVideo.readyState<2) return false;
+
+  offCtx.clearRect(0,0,off.width,off.height);
+  offCtx.drawImage(sourceVideo,0,0,off.width,off.height);
+
+  const frame=offCtx.getImageData(0,0,off.width,off.height);
+  const d=frame.data;
+
+  // 黒～濃いグレーの背景と市松模様を透明化。
+  // 青紫の発光部分は、暗い部分でも色差があれば残す。
+  for(let i=0;i<d.length;i+=4){
+    const r=d[i],g=d[i+1],b=d[i+2];
+    const max=Math.max(r,g,b);
+    const min=Math.min(r,g,b);
+    const chroma=max-min;
+
+    let a=(max-24)*5.2 + chroma*2.0;
+    if(max<52 && chroma<18) a*=.08;
+    if(max<38) a*=.12;
+
+    d[i+3]=clamp(a,0,255);
+  }
+
+  offCtx.putImageData(frame,0,0);
+  keyedFrame=off;
+  return true;
+}
+
+function drawGlow(cx,cy,r,alpha){
+  ctx.save();
+  ctx.globalCompositeOperation="screen";
+  const g=ctx.createRadialGradient(cx,cy,0,cx,cy,r);
+  g.addColorStop(0,`rgba(205,218,255,${.32*alpha})`);
+  g.addColorStop(.35,`rgba(117,128,255,${.18*alpha})`);
+  g.addColorStop(1,"rgba(80,70,255,0)");
+  ctx.fillStyle=g;
+  ctx.beginPath();
+  ctx.arc(cx,cy,r,0,Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawParticles(elapsed,progress,alpha){
+  const cx=innerWidth*.5;
+  const cy=innerHeight*.6;
+  ctx.save();
+  ctx.globalCompositeOperation="screen";
+
+  particles.forEach((p,i)=>{
+    const outward=progress<.5
+      ? ease(progress/.5)
+      : 1-ease((progress-.5)/.5);
+
+    const r=p.radius*outward;
+    const a=p.angle+elapsed*p.speed*.2;
+    const x=cx+Math.cos(a)*r;
+    const y=cy+Math.sin(a)*r*.62-Math.sin(elapsed*1.5+p.phase)*8;
+    const twinkle=.35+.65*(.5+.5*Math.sin(elapsed*3+p.phase));
+
+    ctx.fillStyle=`rgba(${i%3===0?205:150},${i%3===1?220:170},255,${.55*twinkle*alpha})`;
+    ctx.beginPath();
+    ctx.arc(x,y,p.size,0,Math.PI*2);
+    ctx.fill();
+  });
+
+  ctx.restore();
+}
+
+function drawVideoScene(elapsed){
+  const total=9.2;
+  const p=clamp(elapsed/total,0,1);
+  const cx=innerWidth*.5;
+  const cy=innerHeight*.6;
+
+  const fadeIn=clamp(elapsed/.55,0,1);
+  const fadeOut=clamp((total-elapsed)/.75,0,1);
+  const alpha=Math.min(fadeIn,fadeOut);
+
+  // 0～1.5秒：模型から湧き出す
+  // 1.5～6.8秒：画面内を大きく泳ぐ
+  // 6.8～9.2秒：模型へ収束する
+  let x,y,scale,rotation,maskRadius;
+
+  if(elapsed<1.5){
+    const q=ease(elapsed/1.5);
+    x=lerp(cx,innerWidth*.53,q);
+    y=lerp(cy,innerHeight*.43,q);
+    scale=lerp(.06,.78,q);
+    rotation=lerp(.18,-.03,q);
+    maskRadius=lerp(12,Math.min(innerWidth,innerHeight)*.52,q);
+  }else if(elapsed<6.8){
+    const q=(elapsed-1.5)/5.3;
+    x=innerWidth*(.53+.08*Math.sin(q*Math.PI*1.15));
+    y=innerHeight*(.42-.13*Math.sin(q*Math.PI));
+    scale=.78+.08*Math.sin(q*Math.PI);
+    rotation=-.03+.055*Math.sin(q*Math.PI*2);
+    maskRadius=Math.min(innerWidth,innerHeight)*.58;
+  }else{
+    const q=ease((elapsed-6.8)/2.4);
+    x=lerp(innerWidth*.57,cx,q);
+    y=lerp(innerHeight*.39,cy,q);
+    scale=lerp(.78,.025,q);
+    rotation=lerp(.02,-.20,q);
+    maskRadius=lerp(Math.min(innerWidth,innerHeight)*.58,8,q);
+  }
+
+  drawGlow(cx,cy,Math.min(innerWidth,innerHeight)*(.20+.18*Math.sin(Math.PI*p)),alpha);
+  drawParticles(elapsed,p,alpha);
+
+  // フレーム更新は端末負荷を抑えるため最大24fps程度
+  if(sourceVideo.currentTime!==lastKeyTime){
+    keyVideoFrame();
+    lastKeyTime=sourceVideo.currentTime;
+  }
+  if(!keyedFrame) return;
+
+  const sourceAspect=off.width/off.height;
+  let drawW=innerWidth*scale;
+  let drawH=drawW/sourceAspect;
+
+  ctx.save();
+  ctx.translate(x,y);
+  ctx.rotate(rotation);
+
+  // 円形～楕円形の柔らかいマスクで、模型から出現・模型へ収束
+  ctx.beginPath();
+  ctx.ellipse(0,0,maskRadius,maskRadius*.78,0,0,Math.PI*2);
+  ctx.clip();
+
+  ctx.globalAlpha=alpha;
+  ctx.globalCompositeOperation="screen";
+  ctx.drawImage(keyedFrame,-drawW/2,-drawH/2,drawW,drawH);
+  ctx.restore();
+
+  // 模型の真上に吸い込み口のような光輪
+  ctx.save();
+  ctx.globalCompositeOperation="screen";
+  const ringAlpha=(elapsed<1.8?1-clamp(elapsed/1.8,0,1):clamp((elapsed-6.6)/2.6,0,1))*alpha;
+  for(let i=0;i<3;i++){
+    const rr=24+i*12+Math.sin(elapsed*3+i)*3;
+    ctx.strokeStyle=`rgba(188,214,255,${(.32-i*.07)*ringAlpha})`;
+    ctx.lineWidth=1.4;
+    ctx.beginPath();
+    ctx.ellipse(cx,cy+25,rr,rr*.3,0,0,Math.PI*2);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  if(elapsed>=total) finish();
+}
+
+function trigger(){
+  if(active||performance.now()<cooldownUntil) return;
+  active=true;
+  startedAt=performance.now();
+  lastKeyTime=-1;
+  keyedFrame=null;
+  resetParticles();
+
+  sourceVideo.pause();
+  sourceVideo.currentTime=0;
+  sourceVideo.playbackRate=.72;
+  sourceVideo.play().catch(()=>{});
+
+  guide.style.opacity=".08";
+  statusEl.textContent="クラゲが模型から生まれています…";
+}
+
+function finish(){
+  active=false;
+  sourceVideo.pause();
+  sourceVideo.currentTime=0;
+  guide.style.opacity="1";
+  statusEl.textContent="クラゲを枠の中央に入れてください";
+  cooldownUntil=performance.now()+1300;
+}
+
+function render(now){
+  requestAnimationFrame(render);
+  ctx.clearRect(0,0,innerWidth,innerHeight);
+  if(active) drawVideoScene((now-startedAt)/1000);
+}
+requestAnimationFrame(render);
+
+// 紫色の簡易認識
+const detectCanvas=document.createElement("canvas");
+detectCanvas.width=96;
+detectCanvas.height=96;
+const dctx=detectCanvas.getContext("2d",{willReadFrequently:true});
+let hold=0;
+
+function detectPurple(){
+  if(cameraVideo.readyState<2||active) return;
+
+  const vw=cameraVideo.videoWidth;
+  const vh=cameraVideo.videoHeight;
+  dctx.drawImage(
+    cameraVideo,
+    vw*.28,vh*.28,vw*.44,vh*.44,
+    0,0,96,96
+  );
+
+  const data=dctx.getImageData(0,0,96,96).data;
+  let purple=0,usable=0;
+
+  for(let i=0;i<data.length;i+=16){
+    const r=data[i],g=data[i+1],b=data[i+2];
+    const max=Math.max(r,g,b),min=Math.min(r,g,b);
+    if(max>45) usable++;
+    if(b>g*1.03&&r>g*.91&&b>72&&(max-min)>10) purple++;
+  }
+
+  const ratio=usable?purple/usable:0;
+  meterFill.style.width=(clamp((ratio-.035)/.12,0,1)*100).toFixed(0)+"%";
+
+  if(ratio>.09) hold++;
+  else hold=Math.max(0,hold-2);
+
+  if(hold>3){
+    hold=0;
+    trigger();
+  }
+}
+setInterval(detectPurple,140);
+
+startBtn.addEventListener("click",async()=>{
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({
+      video:{
+        facingMode:{ideal:"environment"},
+        width:{ideal:1280},
+        height:{ideal:720}
+      },
+      audio:false
+    });
+    cameraVideo.srcObject=stream;
+    await cameraVideo.play();
+
+    startBtn.style.display="none";
+    demoBtn.style.display="inline-block";
+    statusEl.textContent="クラゲを枠の中央に入れてください";
+
+    // iPhone対策として、利用者操作中に動画を一度だけ再生可能状態にする
+    sourceVideo.muted=true;
+    await sourceVideo.play().catch(()=>{});
+    sourceVideo.pause();
+    sourceVideo.currentTime=0;
+  }catch(e){
+    statusEl.textContent="カメラを開始できません";
+    alert("HTTPS上で開き、カメラ利用を許可してください。");
+  }
+});
+
+demoBtn.addEventListener("click",trigger);
+</script>
+</body>
+</html>
