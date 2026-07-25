@@ -3,142 +3,40 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
-<title>Jellyfish AR Demo</title>
+<title>Jellyfish AR Demo v2</title>
 <style>
-  *{box-sizing:border-box} html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
-  #camera{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
-  #fxWrap{position:fixed;inset:0;pointer-events:none;opacity:0;transform:scale(.02);transform-origin:50% 50%;will-change:transform,opacity;z-index:4}
-  #fx{width:100%;height:100%;object-fit:cover;mix-blend-mode:screen;filter:saturate(1.15) brightness(1.08)}
-  #fxWrap.playing{animation:emerge 10s cubic-bezier(.22,.8,.2,1) forwards}
-  @keyframes emerge{
-    0%{opacity:0;transform:scale(.02)}
-    7%{opacity:.95;transform:scale(.18)}
-    27%{opacity:1;transform:scale(1)}
-    76%{opacity:1;transform:scale(1.04)}
-    91%{opacity:.95;transform:scale(.35)}
-    100%{opacity:0;transform:scale(.02)}
-  }
-  #reticle{position:fixed;width:90px;height:90px;border:1.5px solid rgba(255,255,255,.6);border-radius:50%;transform:translate(-50%,-50%);display:none;z-index:3;box-shadow:0 0 18px rgba(170,140,255,.35)}
-  #reticle::before,#reticle::after{content:"";position:absolute;inset:12px;border:1px solid rgba(170,140,255,.35);border-radius:50%}
-  #ui{position:fixed;left:0;right:0;bottom:0;z-index:10;padding:18px 16px max(18px,env(safe-area-inset-bottom));background:linear-gradient(transparent,rgba(0,0,0,.76));color:#fff;text-align:center}
-  #status{font-size:14px;margin:0 0 10px;text-shadow:0 1px 4px #000}
-  .row{display:flex;justify-content:center;gap:8px;flex-wrap:wrap}
-  button{appearance:none;border:0;border-radius:999px;padding:12px 18px;font-weight:700;font-size:15px;background:#fff;color:#111}
-  button.secondary{background:rgba(20,20,28,.75);color:#fff;border:1px solid rgba(255,255,255,.32)}
-  #hint{font-size:11px;opacity:.72;margin-top:8px}
-  #debugCanvas{display:none}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
+#camera{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
+#fxWrap{position:fixed;inset:0;pointer-events:none;opacity:0;transform:scale(.02);transform-origin:50% 50%;will-change:transform,opacity;z-index:4}
+#fx{width:100%;height:100%;object-fit:cover;mix-blend-mode:screen;filter:saturate(1.15) brightness(1.08)}
+#fxWrap.playing{animation:emerge 10s cubic-bezier(.22,.8,.2,1) forwards}
+@keyframes emerge{0%{opacity:0;transform:scale(.02)}7%{opacity:.95;transform:scale(.18)}27%{opacity:1;transform:scale(1)}76%{opacity:1;transform:scale(1.04)}91%{opacity:.95;transform:scale(.35)}100%{opacity:0;transform:scale(.02)}}
+#reticle{position:fixed;width:90px;height:90px;border:1.5px solid rgba(255,255,255,.6);border-radius:50%;transform:translate(-50%,-50%);display:none;z-index:3;box-shadow:0 0 18px rgba(170,140,255,.35)}
+#ui{position:fixed;left:0;right:0;bottom:0;z-index:10;padding:18px 16px max(18px,env(safe-area-inset-bottom));background:linear-gradient(transparent,rgba(0,0,0,.78));color:#fff;text-align:center}
+#status{font-size:14px;margin:0 0 10px;text-shadow:0 1px 4px #000}.row{display:flex;justify-content:center;gap:8px;flex-wrap:wrap}
+button{appearance:none;border:0;border-radius:999px;padding:12px 18px;font-weight:700;font-size:15px;background:#fff;color:#111}button.secondary{background:rgba(20,20,28,.75);color:#fff;border:1px solid rgba(255,255,255,.32)}button:disabled{opacity:.45}
+#hint{font-size:11px;opacity:.72;margin-top:8px}#debugCanvas{display:none}
 </style>
 </head>
 <body>
 <video id="camera" autoplay muted playsinline></video>
 <div id="reticle"></div>
-<div id="fxWrap"><video id="fx" src="jellyfish_effect.mp4" muted playsinline preload="auto"></video></div>
+<div id="fxWrap"><video id="fx" muted playsinline preload="metadata"><source src="./jellyfish_effect.mp4" type="video/mp4"></video></div>
 <canvas id="debugCanvas" width="96" height="72"></canvas>
-<div id="ui">
-  <p id="status">「カメラを開始」を押し、紫色のレジンのクラゲを画面中央付近に映してください。</p>
-  <div class="row">
-    <button id="startBtn">カメラを開始</button>
-    <button id="testBtn" class="secondary">テスト再生</button>
-  </div>
-  <div id="hint">試作版：紫〜青紫の模型を軽量な色認識で検出します。演出中は再検出しません。</div>
-</div>
+<div id="ui"><p id="status">動画素材を確認中…</p><div class="row"><button id="startBtn" disabled>カメラを開始</button><button id="testBtn" class="secondary" disabled>テスト再生</button></div><div id="hint">v2：Web用に軽量化・Fast Start化した動画を使用しています。</div></div>
 <script>
-const camera=document.getElementById('camera');
-const canvas=document.getElementById('debugCanvas');
-const ctx=canvas.getContext('2d',{willReadFrequently:true});
-const fxWrap=document.getElementById('fxWrap');
-const fx=document.getElementById('fx');
-const statusEl=document.getElementById('status');
-const startBtn=document.getElementById('startBtn');
-const testBtn=document.getElementById('testBtn');
-const reticle=document.getElementById('reticle');
-let scanning=false, playing=false, stableHits=0, lastTrigger=0, scanTimer=null;
-
-function rgbToHsv(r,g,b){
-  r/=255;g/=255;b/=255;
-  const mx=Math.max(r,g,b), mn=Math.min(r,g,b), d=mx-mn;
-  let h=0;
-  if(d!==0){
-    if(mx===r) h=60*(((g-b)/d)%6);
-    else if(mx===g) h=60*((b-r)/d+2);
-    else h=60*((r-g)/d+4);
-  }
-  if(h<0)h+=360;
-  return [h, mx===0?0:d/mx, mx];
-}
-
-function mapVideoPointToScreen(nx,ny){
-  const vw=camera.videoWidth, vh=camera.videoHeight, sw=innerWidth, sh=innerHeight;
-  const scale=Math.max(sw/vw,sh/vh);
-  const dw=vw*scale, dh=vh*scale;
-  const ox=(sw-dw)/2, oy=(sh-dh)/2;
-  return {x:ox+nx*dw,y:oy+ny*dh};
-}
-
-function scan(){
-  if(!scanning||playing||camera.readyState<2) return;
-  const cw=96, ch=Math.max(54,Math.round(cw*camera.videoHeight/camera.videoWidth));
-  if(canvas.width!==cw||canvas.height!==ch){canvas.width=cw;canvas.height=ch}
-  ctx.drawImage(camera,0,0,cw,ch);
-  const d=ctx.getImageData(0,0,cw,ch).data;
-  let count=0,sx=0,sy=0,minx=cw,miny=ch,maxx=0,maxy=0;
-  for(let y=0;y<ch;y+=2){
-    for(let x=0;x<cw;x+=2){
-      const i=(y*cw+x)*4;
-      const [h,s,v]=rgbToHsv(d[i],d[i+1],d[i+2]);
-      // Uploaded resin photo is concentrated around 234-244°. Keep a wider band for lighting changes.
-      const purple = h>=218 && h<=268 && s>=0.16 && v>=0.30;
-      if(purple){count++;sx+=x;sy+=y;minx=Math.min(minx,x);miny=Math.min(miny,y);maxx=Math.max(maxx,x);maxy=Math.max(maxy,y)}
-    }
-  }
-  const sampled=Math.ceil(cw/2)*Math.ceil(ch/2);
-  const ratio=count/sampled;
-  if(count>12 && ratio>0.006){
-    const cx=sx/count, cy=sy/count;
-    const boxW=maxx-minx, boxH=maxy-miny;
-    const compact=(boxW>5 && boxH>5 && boxW<cw*.65 && boxH<ch*.72);
-    if(compact){
-      stableHits++;
-      const p=mapVideoPointToScreen(cx/cw,cy/ch);
-      reticle.style.display='block';reticle.style.left=p.x+'px';reticle.style.top=p.y+'px';
-      statusEl.textContent=stableHits>=2?'クラゲを認識しました。':'クラゲを確認中…';
-      if(stableHits>=3 && Date.now()-lastTrigger>13000) playEffect(p.x,p.y);
-      return;
-    }
-  }
-  stableHits=Math.max(0,stableHits-1);
-  reticle.style.display='none';
-  statusEl.textContent='紫色のレジンのクラゲを画面中央付近に映してください。';
-}
-
-function playEffect(x=innerWidth/2,y=innerHeight/2){
-  if(playing)return;
-  playing=true;lastTrigger=Date.now();stableHits=0;reticle.style.display='none';
-  fxWrap.style.transformOrigin=`${x}px ${y}px`;
-  fxWrap.classList.remove('playing');void fxWrap.offsetWidth;fxWrap.classList.add('playing');
-  fx.pause();fx.currentTime=0;fx.playbackRate=.60;
-  fx.play().catch(()=>{});
-  statusEl.textContent='クラゲの演出を再生中…';
-  setTimeout(()=>{
-    fx.pause();fxWrap.classList.remove('playing');playing=false;
-    statusEl.textContent='演出終了。もう一度クラゲを映すと再生します。';
-  },10000);
-}
-
-async function startCamera(){
-  try{
-    const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
-    camera.srcObject=stream;await camera.play();
-    scanning=true;startBtn.style.display='none';
-    statusEl.textContent='紫色のレジンのクラゲを画面中央付近に映してください。';
-    clearInterval(scanTimer);scanTimer=setInterval(scan,260);
-  }catch(e){
-    statusEl.textContent='カメラを起動できませんでした。ブラウザのカメラ権限とHTTPS接続を確認してください。';
-    console.error(e);
-  }
-}
-startBtn.addEventListener('click',startCamera);
-testBtn.addEventListener('click',()=>playEffect(innerWidth/2,innerHeight*.56));
-</script>
-</body>
-</html>
+const camera=document.getElementById('camera'),canvas=document.getElementById('debugCanvas'),ctx=canvas.getContext('2d',{willReadFrequently:true});
+const fxWrap=document.getElementById('fxWrap'),fx=document.getElementById('fx'),statusEl=document.getElementById('status'),startBtn=document.getElementById('startBtn'),testBtn=document.getElementById('testBtn'),reticle=document.getElementById('reticle');
+let scanning=false,playing=false,stableHits=0,lastTrigger=0,scanTimer=null,assetReady=false;
+function assetOK(){if(assetReady)return;assetReady=true;startBtn.disabled=false;testBtn.disabled=false;statusEl.textContent='準備完了。「テスト再生」または「カメラを開始」を押してください。'}
+fx.addEventListener('loadedmetadata',assetOK,{once:true});fx.addEventListener('canplay',assetOK,{once:true});
+fx.addEventListener('error',()=>{const e=fx.error;statusEl.textContent='動画素材を読み込めません。jellyfish_effect.mp4 が index.html と同じ階層にあるか確認してください。'+(e?' (code '+e.code+')':'');});
+setTimeout(()=>{if(!assetReady){fetch('./jellyfish_effect.mp4',{method:'HEAD',cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(r.status);statusEl.textContent='動画ファイルは見つかりましたが、ブラウザでの読み込みに時間がかかっています。再読み込みしてください。';}).catch(()=>{statusEl.textContent='動画ファイルが見つかりません。GitHub上で index.html と jellyfish_effect.mp4 が同じフォルダにあるか確認してください。';});}},5000);
+fx.load();
+function rgbToHsv(r,g,b){r/=255;g/=255;b/=255;const mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn;let h=0;if(d!==0){if(mx===r)h=60*(((g-b)/d)%6);else if(mx===g)h=60*((b-r)/d+2);else h=60*((r-g)/d+4)}if(h<0)h+=360;return[h,mx===0?0:d/mx,mx]}
+function mapVideoPointToScreen(nx,ny){const vw=camera.videoWidth,vh=camera.videoHeight,sw=innerWidth,sh=innerHeight,scale=Math.max(sw/vw,sh/vh),dw=vw*scale,dh=vh*scale;return{x:(sw-dw)/2+nx*dw,y:(sh-dh)/2+ny*dh}}
+function scan(){if(!scanning||playing||camera.readyState<2)return;const cw=96,ch=Math.max(54,Math.round(cw*camera.videoHeight/camera.videoWidth));if(canvas.width!==cw||canvas.height!==ch){canvas.width=cw;canvas.height=ch}ctx.drawImage(camera,0,0,cw,ch);const d=ctx.getImageData(0,0,cw,ch).data;let count=0,sx=0,sy=0,minx=cw,miny=ch,maxx=0,maxy=0;for(let y=0;y<ch;y+=2)for(let x=0;x<cw;x+=2){const i=(y*cw+x)*4,[h,s,v]=rgbToHsv(d[i],d[i+1],d[i+2]);if(h>=218&&h<=268&&s>=.16&&v>=.30){count++;sx+=x;sy+=y;minx=Math.min(minx,x);miny=Math.min(miny,y);maxx=Math.max(maxx,x);maxy=Math.max(maxy,y)}}const sampled=Math.ceil(cw/2)*Math.ceil(ch/2),ratio=count/sampled;if(count>12&&ratio>.006){const cx=sx/count,cy=sy/count,boxW=maxx-minx,boxH=maxy-miny;if(boxW>5&&boxH>5&&boxW<cw*.65&&boxH<ch*.72){stableHits++;const p=mapVideoPointToScreen(cx/cw,cy/ch);reticle.style.display='block';reticle.style.left=p.x+'px';reticle.style.top=p.y+'px';statusEl.textContent=stableHits>=2?'クラゲを認識しました。':'クラゲを確認中…';if(stableHits>=3&&Date.now()-lastTrigger>13000)playEffect(p.x,p.y);return}}stableHits=Math.max(0,stableHits-1);reticle.style.display='none';statusEl.textContent='紫色のレジンのクラゲを画面中央付近に映してください。'}
+function playEffect(x=innerWidth/2,y=innerHeight/2){if(playing||!assetReady)return;playing=true;lastTrigger=Date.now();stableHits=0;reticle.style.display='none';fxWrap.style.transformOrigin=`${x}px ${y}px`;fxWrap.classList.remove('playing');void fxWrap.offsetWidth;fxWrap.classList.add('playing');fx.pause();fx.currentTime=0;fx.playbackRate=.60;const p=fx.play();if(p)p.catch(e=>{statusEl.textContent='動画再生に失敗しました。画面を一度タップしてから再試行してください。';console.error(e)});statusEl.textContent='クラゲの演出を再生中…';setTimeout(()=>{fx.pause();fxWrap.classList.remove('playing');playing=false;statusEl.textContent='演出終了。もう一度クラゲを映すと再生します。'},10000)}
+async function startCamera(){try{if(!navigator.mediaDevices?.getUserMedia)throw new Error('getUserMedia unavailable');const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});camera.srcObject=stream;await camera.play();scanning=true;startBtn.style.display='none';statusEl.textContent='紫色のレジンのクラゲを画面中央付近に映してください。';clearInterval(scanTimer);scanTimer=setInterval(scan,260)}catch(e){statusEl.textContent='カメラを起動できません。GitHub PagesのHTTPS URLで開き、ブラウザのカメラ権限を許可してください。';console.error(e)}}
+startBtn.addEventListener('click',startCamera);testBtn.addEventListener('click',()=>playEffect(innerWidth/2,innerHeight*.56));
+</script></body></html>
