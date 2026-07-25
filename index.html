@@ -1,237 +1,144 @@
 <!doctype html>
 <html lang="ja">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>幻想クラゲ PNG連番 AR</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+<title>Jellyfish AR Demo</title>
 <style>
-html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#050719;font-family:system-ui,-apple-system,sans-serif}
-#camera{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;background:#050719}
-#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
-#guide{position:fixed;inset:0;display:grid;place-items:center;pointer-events:none;transition:opacity .35s}
-#frame{width:min(70vw,330px);height:min(70vw,330px);border:1.5px solid rgba(236,240,255,.85);border-radius:43%;box-shadow:0 0 0 9999px rgba(3,6,24,.16),0 0 28px rgba(165,183,255,.55)}
-#status{position:fixed;z-index:5;top:max(14px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);color:#fff;background:rgba(4,7,26,.62);backdrop-filter:blur(9px);border:1px solid rgba(255,255,255,.14);padding:9px 14px;border-radius:999px;font-size:14px;white-space:nowrap}
-#controls{position:fixed;z-index:5;left:14px;right:14px;bottom:max(18px,env(safe-area-inset-bottom));display:flex;justify-content:center;gap:10px}
-button{border:0;border-radius:999px;padding:13px 18px;font-size:16px;font-weight:700;box-shadow:0 8px 24px rgba(0,0,0,.25)}
-#start{background:#fff;color:#19172f}
-#demo{display:none;background:rgba(112,91,226,.94);color:#fff}
-#meter{position:fixed;z-index:5;left:50%;bottom:84px;transform:translateX(-50%);width:min(70vw,320px);height:6px;border-radius:999px;overflow:hidden;background:rgba(255,255,255,.22)}
-#meterFill{width:0;height:100%;background:linear-gradient(90deg,#aaa7ff,#efeaff);transition:width .1s}
-#note{position:fixed;z-index:5;left:12px;right:12px;bottom:108px;color:rgba(255,255,255,.9);font-size:12px;text-align:center;text-shadow:0 1px 5px #000}
+  *{box-sizing:border-box} html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
+  #camera{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
+  #fxWrap{position:fixed;inset:0;pointer-events:none;opacity:0;transform:scale(.02);transform-origin:50% 50%;will-change:transform,opacity;z-index:4}
+  #fx{width:100%;height:100%;object-fit:cover;mix-blend-mode:screen;filter:saturate(1.15) brightness(1.08)}
+  #fxWrap.playing{animation:emerge 10s cubic-bezier(.22,.8,.2,1) forwards}
+  @keyframes emerge{
+    0%{opacity:0;transform:scale(.02)}
+    7%{opacity:.95;transform:scale(.18)}
+    27%{opacity:1;transform:scale(1)}
+    76%{opacity:1;transform:scale(1.04)}
+    91%{opacity:.95;transform:scale(.35)}
+    100%{opacity:0;transform:scale(.02)}
+  }
+  #reticle{position:fixed;width:90px;height:90px;border:1.5px solid rgba(255,255,255,.6);border-radius:50%;transform:translate(-50%,-50%);display:none;z-index:3;box-shadow:0 0 18px rgba(170,140,255,.35)}
+  #reticle::before,#reticle::after{content:"";position:absolute;inset:12px;border:1px solid rgba(170,140,255,.35);border-radius:50%}
+  #ui{position:fixed;left:0;right:0;bottom:0;z-index:10;padding:18px 16px max(18px,env(safe-area-inset-bottom));background:linear-gradient(transparent,rgba(0,0,0,.76));color:#fff;text-align:center}
+  #status{font-size:14px;margin:0 0 10px;text-shadow:0 1px 4px #000}
+  .row{display:flex;justify-content:center;gap:8px;flex-wrap:wrap}
+  button{appearance:none;border:0;border-radius:999px;padding:12px 18px;font-weight:700;font-size:15px;background:#fff;color:#111}
+  button.secondary{background:rgba(20,20,28,.75);color:#fff;border:1px solid rgba(255,255,255,.32)}
+  #hint{font-size:11px;opacity:.72;margin-top:8px}
+  #debugCanvas{display:none}
 </style>
 </head>
 <body>
 <video id="camera" autoplay muted playsinline></video>
-<canvas id="fx"></canvas>
-<div id="guide"><div id="frame"></div></div>
-<div id="status">「開始」を押してカメラを許可</div>
-<div id="meter"><div id="meterFill"></div></div>
-<div id="note">紫色のレジンクラゲを枠の中央に入れてください</div>
-<div id="controls">
-<button id="start">開始</button>
-<button id="demo">手動で演出</button>
+<div id="reticle"></div>
+<div id="fxWrap"><video id="fx" src="jellyfish_effect.mp4" muted playsinline preload="auto"></video></div>
+<canvas id="debugCanvas" width="96" height="72"></canvas>
+<div id="ui">
+  <p id="status">「カメラを開始」を押し、紫色のレジンのクラゲを画面中央付近に映してください。</p>
+  <div class="row">
+    <button id="startBtn">カメラを開始</button>
+    <button id="testBtn" class="secondary">テスト再生</button>
+  </div>
+  <div id="hint">試作版：紫〜青紫の模型を軽量な色認識で検出します。演出中は再検出しません。</div>
 </div>
-
 <script>
-const SHEETS=["jelly_sheet_00.png", "jelly_sheet_01.png", "jelly_sheet_02.png", "jelly_sheet_03.png", "jelly_sheet_04.png", "jelly_sheet_05.png"];
-const FRAME_W=576, FRAME_H=384, COLS=4, ROWS=3;
-const FRAME_COUNT=71, SOURCE_FPS=12;
+const camera=document.getElementById('camera');
+const canvas=document.getElementById('debugCanvas');
+const ctx=canvas.getContext('2d',{willReadFrequently:true});
+const fxWrap=document.getElementById('fxWrap');
+const fx=document.getElementById('fx');
+const statusEl=document.getElementById('status');
+const startBtn=document.getElementById('startBtn');
+const testBtn=document.getElementById('testBtn');
+const reticle=document.getElementById('reticle');
+let scanning=false, playing=false, stableHits=0, lastTrigger=0, scanTimer=null;
 
-const cameraVideo=document.getElementById("camera");
-const canvas=document.getElementById("fx");
-const ctx=canvas.getContext("2d");
-const statusEl=document.getElementById("status");
-const startBtn=document.getElementById("start");
-const demoBtn=document.getElementById("demo");
-const guide=document.getElementById("guide");
-const meterFill=document.getElementById("meterFill");
-
-let dpr=Math.min(devicePixelRatio||1,1.5);
-function resize(){
-  canvas.width=innerWidth*dpr; canvas.height=innerHeight*dpr;
-  canvas.style.width=innerWidth+"px"; canvas.style.height=innerHeight+"px";
-  ctx.setTransform(dpr,0,0,dpr,0,0);
-}
-resize(); addEventListener("resize",resize);
-
-const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-const lerp=(a,b,t)=>a+(b-a)*t;
-const ease=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
-const rand=(a,b)=>a+Math.random()*(b-a);
-
-const sheets=[];
-let loaded=0;
-SHEETS.forEach((name,i)=>{
-  const img=new Image();
-  img.src="assets/"+name;
-  img.onload=()=>{ loaded++; if(loaded===SHEETS.length) statusEl.textContent="素材の準備ができました"; };
-  sheets[i]=img;
-});
-
-let active=false, startedAt=0, cooldownUntil=0, particles=[];
-
-function resetParticles(){
-  particles=[];
-  for(let i=0;i<72;i++) particles.push({
-    angle:rand(0,Math.PI*2),radius:rand(12,170),speed:rand(.25,1.2),
-    size:rand(1,4),phase:rand(0,Math.PI*2)
-  });
-}
-
-function drawFrame(frameIndex,x,y,w,rotation,alpha,maskRadius){
-  const sheetIndex=Math.floor(frameIndex/(COLS*ROWS));
-  const local=frameIndex%(COLS*ROWS);
-  const sx=(local%COLS)*FRAME_W;
-  const sy=Math.floor(local/COLS)*FRAME_H;
-  const img=sheets[sheetIndex];
-  if(!img || !img.complete) return;
-
-  const h=w*(FRAME_H/FRAME_W);
-  ctx.save();
-  ctx.translate(x,y);
-  ctx.rotate(rotation);
-  ctx.beginPath();
-  ctx.ellipse(0,0,maskRadius,maskRadius*.78,0,0,Math.PI*2);
-  ctx.clip();
-  ctx.globalAlpha=alpha;
-  ctx.globalCompositeOperation="screen";
-  ctx.drawImage(img,sx,sy,FRAME_W,FRAME_H,-w/2,-h/2,w,h);
-  ctx.restore();
-}
-
-function drawGlow(cx,cy,r,alpha){
-  ctx.save(); ctx.globalCompositeOperation="screen";
-  const g=ctx.createRadialGradient(cx,cy,0,cx,cy,r);
-  g.addColorStop(0,`rgba(205,218,255,${.34*alpha})`);
-  g.addColorStop(.4,`rgba(117,128,255,${.18*alpha})`);
-  g.addColorStop(1,"rgba(80,70,255,0)");
-  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
-  ctx.restore();
-}
-
-function drawParticles(elapsed,p,alpha){
-  const cx=innerWidth*.5, cy=innerHeight*.6;
-  const outward=p<.52?ease(p/.52):1-ease((p-.52)/.48);
-  ctx.save(); ctx.globalCompositeOperation="screen";
-  particles.forEach((pt,i)=>{
-    const r=pt.radius*outward;
-    const a=pt.angle+elapsed*pt.speed*.22;
-    const x=cx+Math.cos(a)*r;
-    const y=cy+Math.sin(a)*r*.62-Math.sin(elapsed*1.6+pt.phase)*7;
-    const tw=.35+.65*(.5+.5*Math.sin(elapsed*3+pt.phase));
-    ctx.fillStyle=`rgba(${i%3===0?205:150},${i%3===1?220:170},255,${.58*tw*alpha})`;
-    ctx.beginPath(); ctx.arc(x,y,pt.size,0,Math.PI*2); ctx.fill();
-  });
-  ctx.restore();
-}
-
-function drawScene(elapsed){
-  const total=9.2;
-  const p=clamp(elapsed/total,0,1);
-  const cx=innerWidth*.5, cy=innerHeight*.6;
-  const alpha=Math.min(clamp(elapsed/.45,0,1),clamp((total-elapsed)/.65,0,1));
-
-  let x,y,scale,rotation,maskRadius;
-  if(elapsed<1.35){
-    const q=ease(elapsed/1.35);
-    x=lerp(cx,innerWidth*.53,q); y=lerp(cy,innerHeight*.43,q);
-    scale=lerp(.04,.78,q); rotation=lerp(.20,-.03,q);
-    maskRadius=lerp(8,Math.min(innerWidth,innerHeight)*.53,q);
-  }else if(elapsed<6.75){
-    const q=(elapsed-1.35)/5.4;
-    x=innerWidth*(.53+.09*Math.sin(q*Math.PI*1.1));
-    y=innerHeight*(.42-.14*Math.sin(q*Math.PI));
-    scale=.78+.09*Math.sin(q*Math.PI);
-    rotation=-.03+.06*Math.sin(q*Math.PI*2);
-    maskRadius=Math.min(innerWidth,innerHeight)*.59;
-  }else{
-    const q=ease((elapsed-6.75)/2.45);
-    x=lerp(innerWidth*.57,cx,q); y=lerp(innerHeight*.39,cy,q);
-    scale=lerp(.78,.018,q); rotation=lerp(.02,-.22,q);
-    maskRadius=lerp(Math.min(innerWidth,innerHeight)*.59,5,q);
+function rgbToHsv(r,g,b){
+  r/=255;g/=255;b/=255;
+  const mx=Math.max(r,g,b), mn=Math.min(r,g,b), d=mx-mn;
+  let h=0;
+  if(d!==0){
+    if(mx===r) h=60*(((g-b)/d)%6);
+    else if(mx===g) h=60*((b-r)/d+2);
+    else h=60*((r-g)/d+4);
   }
+  if(h<0)h+=360;
+  return [h, mx===0?0:d/mx, mx];
+}
 
-  drawGlow(cx,cy,Math.min(innerWidth,innerHeight)*(.20+.19*Math.sin(Math.PI*p)),alpha);
-  drawParticles(elapsed,p,alpha);
+function mapVideoPointToScreen(nx,ny){
+  const vw=camera.videoWidth, vh=camera.videoHeight, sw=innerWidth, sh=innerHeight;
+  const scale=Math.max(sw/vw,sh/vh);
+  const dw=vw*scale, dh=vh*scale;
+  const ox=(sw-dw)/2, oy=(sh-dh)/2;
+  return {x:ox+nx*dw,y:oy+ny*dh};
+}
 
-  // 5.9秒の素材を9.2秒の演出に合わせて循環・減速再生
-  const sourceTime=(elapsed<6.75 ? elapsed*.78 : (6.75-elapsed*.20));
-  let frameIndex=Math.floor(Math.abs(sourceTime)*SOURCE_FPS)%FRAME_COUNT;
-  drawFrame(frameIndex,x,y,innerWidth*scale,rotation,alpha,maskRadius);
-
-  // 模型へ出入りする光輪
-  const ringAlpha=(elapsed<1.6?1-clamp(elapsed/1.6,0,1):clamp((elapsed-6.5)/2.7,0,1))*alpha;
-  ctx.save(); ctx.globalCompositeOperation="screen";
-  for(let i=0;i<3;i++){
-    const rr=23+i*12+Math.sin(elapsed*3+i)*3;
-    ctx.strokeStyle=`rgba(188,214,255,${(.34-i*.07)*ringAlpha})`;
-    ctx.lineWidth=1.4; ctx.beginPath(); ctx.ellipse(cx,cy+25,rr,rr*.3,0,0,Math.PI*2); ctx.stroke();
+function scan(){
+  if(!scanning||playing||camera.readyState<2) return;
+  const cw=96, ch=Math.max(54,Math.round(cw*camera.videoHeight/camera.videoWidth));
+  if(canvas.width!==cw||canvas.height!==ch){canvas.width=cw;canvas.height=ch}
+  ctx.drawImage(camera,0,0,cw,ch);
+  const d=ctx.getImageData(0,0,cw,ch).data;
+  let count=0,sx=0,sy=0,minx=cw,miny=ch,maxx=0,maxy=0;
+  for(let y=0;y<ch;y+=2){
+    for(let x=0;x<cw;x+=2){
+      const i=(y*cw+x)*4;
+      const [h,s,v]=rgbToHsv(d[i],d[i+1],d[i+2]);
+      // Uploaded resin photo is concentrated around 234-244°. Keep a wider band for lighting changes.
+      const purple = h>=218 && h<=268 && s>=0.16 && v>=0.30;
+      if(purple){count++;sx+=x;sy+=y;minx=Math.min(minx,x);miny=Math.min(miny,y);maxx=Math.max(maxx,x);maxy=Math.max(maxy,y)}
+    }
   }
-  ctx.restore();
-
-  if(elapsed>=total) finish();
-}
-
-function trigger(){
-  if(active||performance.now()<cooldownUntil||loaded<SHEETS.length) return;
-  active=true; startedAt=performance.now(); resetParticles();
-  guide.style.opacity=".08";
-  statusEl.textContent="クラゲが模型から生まれています…";
-}
-
-function finish(){
-  active=false; guide.style.opacity="1";
-  statusEl.textContent="クラゲを枠の中央に入れてください";
-  cooldownUntil=performance.now()+1300;
-}
-
-function render(now){
-  requestAnimationFrame(render);
-  ctx.clearRect(0,0,innerWidth,innerHeight);
-  if(active) drawScene((now-startedAt)/1000);
-}
-requestAnimationFrame(render);
-
-// 紫色の簡易認識
-const detectCanvas=document.createElement("canvas");
-detectCanvas.width=96; detectCanvas.height=96;
-const dctx=detectCanvas.getContext("2d",{willReadFrequently:true});
-let hold=0;
-
-function detectPurple(){
-  if(cameraVideo.readyState<2||active) return;
-  const vw=cameraVideo.videoWidth,vh=cameraVideo.videoHeight;
-  dctx.drawImage(cameraVideo,vw*.28,vh*.28,vw*.44,vh*.44,0,0,96,96);
-  const data=dctx.getImageData(0,0,96,96).data;
-  let purple=0,usable=0;
-  for(let i=0;i<data.length;i+=16){
-    const r=data[i],g=data[i+1],b=data[i+2];
-    const mx=Math.max(r,g,b),mn=Math.min(r,g,b);
-    if(mx>45) usable++;
-    if(b>g*1.03&&r>g*.91&&b>72&&(mx-mn)>10) purple++;
+  const sampled=Math.ceil(cw/2)*Math.ceil(ch/2);
+  const ratio=count/sampled;
+  if(count>12 && ratio>0.006){
+    const cx=sx/count, cy=sy/count;
+    const boxW=maxx-minx, boxH=maxy-miny;
+    const compact=(boxW>5 && boxH>5 && boxW<cw*.65 && boxH<ch*.72);
+    if(compact){
+      stableHits++;
+      const p=mapVideoPointToScreen(cx/cw,cy/ch);
+      reticle.style.display='block';reticle.style.left=p.x+'px';reticle.style.top=p.y+'px';
+      statusEl.textContent=stableHits>=2?'クラゲを認識しました。':'クラゲを確認中…';
+      if(stableHits>=3 && Date.now()-lastTrigger>13000) playEffect(p.x,p.y);
+      return;
+    }
   }
-  const ratio=usable?purple/usable:0;
-  meterFill.style.width=(clamp((ratio-.035)/.12,0,1)*100).toFixed(0)+"%";
-  if(ratio>.09) hold++; else hold=Math.max(0,hold-2);
-  if(hold>3){hold=0;trigger();}
+  stableHits=Math.max(0,stableHits-1);
+  reticle.style.display='none';
+  statusEl.textContent='紫色のレジンのクラゲを画面中央付近に映してください。';
 }
-setInterval(detectPurple,140);
 
-startBtn.addEventListener("click",async()=>{
+function playEffect(x=innerWidth/2,y=innerHeight/2){
+  if(playing)return;
+  playing=true;lastTrigger=Date.now();stableHits=0;reticle.style.display='none';
+  fxWrap.style.transformOrigin=`${x}px ${y}px`;
+  fxWrap.classList.remove('playing');void fxWrap.offsetWidth;fxWrap.classList.add('playing');
+  fx.pause();fx.currentTime=0;fx.playbackRate=.60;
+  fx.play().catch(()=>{});
+  statusEl.textContent='クラゲの演出を再生中…';
+  setTimeout(()=>{
+    fx.pause();fxWrap.classList.remove('playing');playing=false;
+    statusEl.textContent='演出終了。もう一度クラゲを映すと再生します。';
+  },10000);
+}
+
+async function startCamera(){
   try{
-    const stream=await navigator.mediaDevices.getUserMedia({
-      video:{facingMode:{ideal:"environment"},width:{ideal:1280},height:{ideal:720}},
-      audio:false
-    });
-    cameraVideo.srcObject=stream; await cameraVideo.play();
-    startBtn.style.display="none"; demoBtn.style.display="inline-block";
-    statusEl.textContent=loaded===SHEETS.length?"クラゲを枠の中央に入れてください":"素材を読み込み中…";
+    const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
+    camera.srcObject=stream;await camera.play();
+    scanning=true;startBtn.style.display='none';
+    statusEl.textContent='紫色のレジンのクラゲを画面中央付近に映してください。';
+    clearInterval(scanTimer);scanTimer=setInterval(scan,260);
   }catch(e){
-    statusEl.textContent="カメラを開始できません";
-    alert("HTTPS上で開き、カメラ利用を許可してください。");
+    statusEl.textContent='カメラを起動できませんでした。ブラウザのカメラ権限とHTTPS接続を確認してください。';
+    console.error(e);
   }
-});
-demoBtn.addEventListener("click",trigger);
+}
+startBtn.addEventListener('click',startCamera);
+testBtn.addEventListener('click',()=>playEffect(innerWidth/2,innerHeight*.56));
 </script>
 </body>
 </html>
