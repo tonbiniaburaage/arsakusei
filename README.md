@@ -8,7 +8,7 @@ Phase 1〜7を実装済みです。
 
 - 3種類の認識カードをMindARで自動判定
 - クラゲ5体（大1・中2・小2）、クジラ1体、ウミガメ1体の専用遊泳
-- GLBがない場合も動作する軽量な仮3Dモデル
+- クラゲは提供画像をそのまま使う2D Sprite、ほかの生物は軽量な仮3Dモデル
 - 星・泡・光の軽量演出
 - カメラ映像・3D・演出を合成したAR写真
 - 共有シートまたは画像保存へのフォールバック
@@ -35,14 +35,22 @@ Phase 1〜7を実装済みです。
 python -m http.server 8000
 ```
 
-`http://localhost:8000` を開き、「カメラなし確認」から生物を選んで「動きを見る」を押します。自動ブラウザなどカメラにアクセスできない環境でも、3D・演出・撮影プレビューを確認できます。
+`http://localhost:8000` を開き、「カメラなし確認」から生物を選んで「動きを見る」を押します。自動ブラウザなどカメラにアクセスできない環境でも、2D・3D演出と撮影プレビューを確認できます。
+
+## 現在のクラゲ表現
+
+クラゲは `assets/sprites/dreamy-jellyfish-source.png` をそのまま読み込み、画像の端からつながった白背景だけを実行時に透明化します。
+
+- キャラクター本体を描き直さないため、元画像の顔・色・星柄を維持
+- 大1・中2・小2の5体を異なる軌道で浮遊
+- 星、泡、発光オーラ、周回リング、光の尾を2D Canvasで合成
+- カメラ映像と一緒にAR写真へ保存可能
 
 ## 3Dモデルを差し替える
 
-以下にGLBを置くと仮モデルから自動的に置き換わります。
+クジラとウミガメは、以下にGLBを置くと仮モデルから自動的に置き換わります。
 
 ```text
-assets/models/jellyfish.glb
 assets/models/whale.glb
 assets/models/turtle.glb
 ```
@@ -55,6 +63,7 @@ assets/models/turtle.glb
 index.html                         AR画面
 target-card.html                   3種類のカード表示・印刷
 assets/targets/creature-targets.mind  3種類の認識データ
+assets/sprites/dreamy-jellyfish-source.png  クラゲ2D素材
 src/tracking-engine.js             MindAR複数ターゲット追跡
 src/creature-controller.js         生物の読込・遊泳
 src/effect-controller.js           星・泡・光

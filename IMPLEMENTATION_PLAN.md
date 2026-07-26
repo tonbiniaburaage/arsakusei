@@ -24,6 +24,8 @@ Three.js + MindAR Image Tracking + GitHub Pagesの静的構成です。iPhoneと
 
 - 大1・中2・小2を異なる軌道、速度、位相で遊泳
 - 中央に撮影余白を確保
+- クラゲは提供画像をそのまま使う2D Sprite方式へ変更
+- 白背景だけを実行時に透明化し、星・泡・光跡をCanvasで合成
 
 ### Phase 4 — AR写真
 

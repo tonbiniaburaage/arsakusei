@@ -6,6 +6,8 @@ export const CREATURES = {
     targetIndex: 0,
     label: 'クラゲ',
     icon: '✦',
+    renderMode: 'sprite2d',
+    spriteUrl: './assets/sprites/dreamy-jellyfish-source.png',
     modelUrl: './assets/models/jellyfish.glb',
     scale: 0.9,
     animationSpeed: 0.8,
@@ -61,7 +63,7 @@ export function qualityProfile() {
   return {
     lowPower,
     pixelRatio: Math.min(devicePixelRatio || 1, lowPower ? 1 : 1.5),
-    maxParticles: lowPower ? 54 : 92,
-    spawnRate: lowPower ? 0.55 : 1
+    maxParticles: lowPower ? 90 : 160,
+    spawnRate: lowPower ? 0.72 : 1.2
   };
 }

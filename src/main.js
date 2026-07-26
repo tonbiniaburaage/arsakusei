@@ -46,7 +46,7 @@ async function startExperience({ tracking, config }) {
   startButton.disabled = true;
   demoButton.disabled = true;
   demoCreature.disabled = true;
-  startButton.textContent = tracking ? 'カメラを準備中…' : '3Dを準備中…';
+  startButton.textContent = tracking ? 'カメラを準備中…' : '演出を準備中…';
   status.textContent = tracking ? 'カメラの使用を許可してください' : `${config.label}を準備しています`;
 
   try {
@@ -77,9 +77,11 @@ async function startExperience({ tracking, config }) {
       activeCreature.textContent = `${config.icon} ${config.label}`;
       activeCreature.hidden = false;
       photoController.setEnabled(true);
-      status.textContent = result.usedPlaceholder
-        ? `仮の${config.label}モデルを表示中`
-        : `${config.label}モデルを表示中`;
+      status.textContent = result.renderMode === 'sprite2d'
+        ? `夢かわ${config.label}の2Dアニメーションを表示中`
+        : result.usedPlaceholder
+          ? `仮の${config.label}モデルを表示中`
+          : `${config.label}モデルを表示中`;
     }
   } catch (error) {
     console.warn('ARを開始できませんでした。', error);

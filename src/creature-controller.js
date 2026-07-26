@@ -17,6 +17,10 @@ export class CreatureController {
   }
 
   async load() {
+    if (this.config.renderMode === 'sprite2d') {
+      return await this.loadSpritePopulation();
+    }
+
     const source = await this.loadSource();
     const population = this.config.population;
 
@@ -40,6 +44,163 @@ export class CreatureController {
     });
 
     return { usedPlaceholder: !source.scene, count: this.instances.length, key: this.config.key };
+  }
+
+  async loadSpritePopulation() {
+    const texture = await this.loadCutoutTexture(this.config.spriteUrl);
+    const aspect = texture.image.width / texture.image.height;
+
+    this.config.population.forEach((motion, index) => {
+      const material = new THREE.SpriteMaterial({
+        map: texture,
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.98,
+        depthWrite: false,
+        alphaTest: 0.015
+      });
+      const sprite = new THREE.Sprite(material);
+      const height = this.config.scale * motion.size * this.worldScale;
+      sprite.scale.set(height * aspect, height, 1);
+      sprite.userData.baseScale = sprite.scale.clone();
+
+      const instance = new THREE.Group();
+      const visual = new THREE.Group();
+      visual.add(sprite);
+      instance.add(visual);
+      instance.userData = {
+        motion,
+        visual,
+        sprite,
+        spriteIndex: index,
+        mixers: [],
+        isSprite2D: true
+      };
+      this.root.add(instance);
+      this.instances.push(instance);
+      this.applyMotion(instance, 0, index);
+    });
+
+    return {
+      usedPlaceholder: false,
+      count: this.instances.length,
+      key: this.config.key,
+      renderMode: 'sprite2d'
+    };
+  }
+
+  async loadCutoutTexture(url) {
+    const image = new Image();
+    image.decoding = 'async';
+    await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = () => reject(new Error(`2D画像を読み込めませんでした: ${url}`));
+      image.src = url;
+    });
+    if (image.decode) {
+      try {
+        await image.decode();
+      } catch {
+        // onload後にdecodeが失敗する一部Safariでも、読み込み済み画像はそのまま使用できる。
+      }
+    }
+
+    const source = document.createElement('canvas');
+    source.width = image.naturalWidth;
+    source.height = image.naturalHeight;
+    const sourceContext = source.getContext('2d', { willReadFrequently: true });
+    sourceContext.drawImage(image, 0, 0);
+    const imageData = sourceContext.getImageData(0, 0, source.width, source.height);
+    const { data } = imageData;
+    const width = source.width;
+    const height = source.height;
+    const visited = new Uint8Array(width * height);
+    const queue = new Int32Array(width * height);
+    let head = 0;
+    let tail = 0;
+
+    const isBackground = (index) => {
+      const offset = index * 4;
+      const red = data[offset];
+      const green = data[offset + 1];
+      const blue = data[offset + 2];
+      return red > 236 && green > 236 && blue > 236
+        && Math.max(red, green, blue) - Math.min(red, green, blue) < 18;
+    };
+    const enqueue = (index) => {
+      if (visited[index] || !isBackground(index)) return;
+      visited[index] = 1;
+      queue[tail] = index;
+      tail += 1;
+    };
+
+    for (let x = 0; x < width; x += 1) {
+      enqueue(x);
+      enqueue((height - 1) * width + x);
+    }
+    for (let y = 1; y < height - 1; y += 1) {
+      enqueue(y * width);
+      enqueue(y * width + width - 1);
+    }
+
+    while (head < tail) {
+      const index = queue[head];
+      head += 1;
+      const x = index % width;
+      const y = Math.floor(index / width);
+      if (x > 0) enqueue(index - 1);
+      if (x < width - 1) enqueue(index + 1);
+      if (y > 0) enqueue(index - width);
+      if (y < height - 1) enqueue(index + width);
+    }
+
+    let minX = width;
+    let minY = height;
+    let maxX = 0;
+    let maxY = 0;
+    for (let index = 0; index < visited.length; index += 1) {
+      const offset = index * 4;
+      if (visited[index]) {
+        data[offset + 3] = 0;
+        continue;
+      }
+      if (data[offset + 3] < 8) continue;
+      const x = index % width;
+      const y = Math.floor(index / width);
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+    }
+    sourceContext.putImageData(imageData, 0, 0);
+
+    const padding = 8;
+    minX = Math.max(0, minX - padding);
+    minY = Math.max(0, minY - padding);
+    maxX = Math.min(width - 1, maxX + padding);
+    maxY = Math.min(height - 1, maxY + padding);
+    const crop = document.createElement('canvas');
+    crop.width = maxX - minX + 1;
+    crop.height = maxY - minY + 1;
+    crop.getContext('2d').drawImage(
+      source,
+      minX,
+      minY,
+      crop.width,
+      crop.height,
+      0,
+      0,
+      crop.width,
+      crop.height
+    );
+
+    const texture = new THREE.CanvasTexture(crop);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.minFilter = THREE.LinearMipmapLinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.generateMipmaps = true;
+    texture.needsUpdate = true;
+    return texture;
   }
 
   async loadSource() {
@@ -264,7 +425,21 @@ export class CreatureController {
       this.applyMotion(instance, localElapsed, index);
       this.applyPhotoPose(instance);
       this.animateParts(instance, localElapsed);
+      this.animateSprite(instance, localElapsed);
     });
+  }
+
+  animateSprite(instance, elapsed) {
+    const sprite = instance.userData.sprite;
+    if (!sprite) return;
+    const { motion, spriteIndex } = instance.userData;
+    const phase = elapsed * motion.speed * 2.4 + motion.phase + spriteIndex * 0.35;
+    const pulse = 1 + Math.sin(phase * 2.2) * 0.025;
+    const stretch = 1 + Math.cos(phase * 1.7) * 0.018;
+    const base = sprite.userData.baseScale;
+    sprite.scale.set(base.x * pulse, base.y * stretch, 1);
+    sprite.material.rotation = Math.sin(phase * 0.8) * 0.045;
+    sprite.material.opacity = 0.965 + Math.sin(phase * 1.3) * 0.025;
   }
 
   applyMotion(instance, elapsed, index) {
@@ -334,6 +509,6 @@ export class CreatureController {
   }
 
   getEffectSources() {
-    return this.instances;
+    return this.instances.map((instance) => instance.userData.sprite || instance);
   }
 }
