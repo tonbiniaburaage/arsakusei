@@ -21,6 +21,7 @@
     <video id="camera" autoplay playsinline muted aria-label="カメラ映像" hidden></video>
     <div id="stage" aria-hidden="true"></div>
     <canvas id="effects" aria-hidden="true"></canvas>
+    <div id="game-controls" class="game-controls" aria-label="泡ぷちゲーム"></div>
 
     <header class="hud">
       <p class="eyebrow">DREAMY OCEAN</p>
@@ -31,7 +32,7 @@
     <section id="welcome" class="welcome">
       <div class="welcome__icon" aria-hidden="true">✦</div>
       <h2>模型から海のなかまが飛び出すよ</h2>
-      <p>模型と一緒に置いた認識カードを映すと、クラゲ・クジラ・ウミガメを自動で見分けます。</p>
+      <p>模型と一緒に置いた認識カードを映すと、斜めからでもクラゲ・クジラ・ウミガメを自動で見分けます。</p>
       <button id="start-button" class="primary-button">ARをはじめる</button>
       <div class="demo-row">
         <label for="demo-creature">カメラなし確認</label>
@@ -51,7 +52,7 @@
       <span class="tracking-guide__corner tracking-guide__corner--tr"></span>
       <span class="tracking-guide__corner tracking-guide__corner--bl"></span>
       <span class="tracking-guide__corner tracking-guide__corner--br"></span>
-      <p>模型の下にある認識カードを枠の中に映してね</p>
+      <p>カードは斜め・一部分だけでもOK。模型と一緒に映してね</p>
     </div>
 
     <div id="active-creature" class="active-creature" hidden></div>
@@ -78,6 +79,6 @@
     </section>
   </main>
 
-  <script type="module" src="./src/main.js"></script>
+  <script type="module" src="./src/main.js?v=20260726-game"></script>
 </body>
 </html>

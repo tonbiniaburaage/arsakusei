@@ -13,11 +13,15 @@ export const CREATURES = {
     animationSpeed: 0.8,
     effect: { colors: ['#ffd1f1', '#cdb9ff', '#a9ebff'], starRatio: 0.48 },
     population: [
-      { type: 'jellyfish', size: 1.18, base: [-0.92, 0.58, 0.05], range: [0.22, 0.16, 0.22], speed: 0.46, phase: 0.2, photo: [-0.72, 0.56, 0.12] },
-      { type: 'jellyfish', size: 0.9, base: [0.86, 0.54, -0.2], range: [0.18, 0.24, 0.28], speed: 0.58, phase: 1.7, photo: [0.7, 0.5, 0.06] },
-      { type: 'jellyfish', size: 0.82, base: [-0.78, -0.34, 0.22], range: [0.28, 0.17, 0.24], speed: 0.52, phase: 3.1, photo: [-0.74, -0.3, 0.16] },
-      { type: 'jellyfish', size: 0.63, base: [0.82, -0.42, 0.16], range: [0.2, 0.21, 0.3], speed: 0.72, phase: 4.4, photo: [0.72, -0.34, 0.14] },
-      { type: 'jellyfish', size: 0.58, base: [0.12, 0.92, -0.42], range: [0.32, 0.12, 0.2], speed: 0.64, phase: 5.8, photo: [0.08, 0.82, -0.16] }
+      {
+        type: 'jellyfish2d',
+        size: 1.5,
+        base: [0.42, 0.42, -0.08],
+        range: [0.92, 0.54, 0.18],
+        speed: 0.46,
+        phase: 0.2,
+        photo: [0.55, 0.4, -0.08]
+      }
     ],
     colors: { body: 0xbca7ff, glow: 0xffb8ec, accent: 0x89dfff }
   },

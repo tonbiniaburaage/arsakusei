@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 
+const cutoutTextureCache = new Map();
+
 export class CreatureController {
   constructor(parent, config, { worldScale = 1 } = {}) {
     this.parent = parent;
@@ -90,6 +92,17 @@ export class CreatureController {
   }
 
   async loadCutoutTexture(url) {
+    if (!cutoutTextureCache.has(url)) {
+      const pending = this.createCutoutTexture(url).catch((error) => {
+        cutoutTextureCache.delete(url);
+        throw error;
+      });
+      cutoutTextureCache.set(url, pending);
+    }
+    return await cutoutTextureCache.get(url);
+  }
+
+  async createCutoutTexture(url) {
     const image = new Image();
     image.decoding = 'async';
     await new Promise((resolve, reject) => {
@@ -437,9 +450,11 @@ export class CreatureController {
     const pulse = 1 + Math.sin(phase * 2.2) * 0.025;
     const stretch = 1 + Math.cos(phase * 1.7) * 0.018;
     const base = sprite.userData.baseScale;
-    sprite.scale.set(base.x * pulse, base.y * stretch, 1);
+    const choreoScale = instance.userData.choreoScale || 1;
+    sprite.scale.set(base.x * pulse * choreoScale, base.y * stretch * choreoScale, 1);
     sprite.material.rotation = Math.sin(phase * 0.8) * 0.045;
-    sprite.material.opacity = 0.965 + Math.sin(phase * 1.3) * 0.025;
+    const choreoOpacity = instance.userData.choreoOpacity ?? 0.98;
+    sprite.material.opacity = choreoOpacity * (0.975 + Math.sin(phase * 1.3) * 0.02);
   }
 
   applyMotion(instance, elapsed, index) {
@@ -447,6 +462,45 @@ export class CreatureController {
     const t = elapsed * motion.speed + motion.phase;
     const [bx, by, bz] = motion.base;
     const [rx, ry, rz] = motion.range;
+
+    if (motion.type === 'jellyfish2d') {
+      const entranceDuration = 0.65;
+      const orbitDuration = 4.2;
+      if (elapsed < entranceDuration) {
+        const progress = Math.min(1, elapsed / entranceDuration);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        instance.position.set(
+          -rx * this.worldScale * (1 - eased),
+          (by - 0.12 + eased * 0.18) * this.worldScale,
+          bz * this.worldScale
+        );
+        instance.userData.choreoScale = 0.35 + eased * 0.65;
+        instance.userData.choreoOpacity = 0.2 + eased * 0.78;
+      } else if (elapsed < entranceDuration + orbitDuration) {
+        const progress = (elapsed - entranceDuration) / orbitDuration;
+        const angle = -Math.PI * 0.55 + progress * Math.PI * 2;
+        const near = (Math.sin(angle) + 1) * 0.5;
+        instance.position.set(
+          Math.cos(angle) * rx * this.worldScale,
+          (0.22 + Math.sin(angle) * ry) * this.worldScale,
+          (bz + Math.cos(angle) * rz) * this.worldScale
+        );
+        instance.userData.choreoScale = 0.76 + near * 0.42;
+        instance.userData.choreoOpacity = 0.52 + near * 0.46;
+      } else {
+        const idleTime = elapsed - entranceDuration - orbitDuration;
+        instance.position.set(
+          (bx + Math.sin(idleTime * 0.42) * 0.2 + Math.sin(idleTime * 0.17) * 0.08) * this.worldScale,
+          (by + Math.sin(idleTime * 0.58) * 0.14 + Math.cos(idleTime * 0.23) * 0.06) * this.worldScale,
+          (bz + Math.cos(idleTime * 0.31) * rz * 0.45) * this.worldScale
+        );
+        instance.userData.choreoScale = 0.96 + Math.sin(idleTime * 0.7) * 0.045;
+        instance.userData.choreoOpacity = 0.98;
+      }
+      instance.rotation.set(0, 0, 0);
+      visual.position.y = Math.sin(elapsed * 1.1) * 0.025 * this.worldScale;
+      return;
+    }
 
     if (motion.type === 'whale') {
       instance.position.set(

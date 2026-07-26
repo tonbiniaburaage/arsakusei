@@ -1,8 +1,8 @@
-import { AREngine } from './ar-engine.js';
-import { TrackingEngine } from './tracking-engine.js';
-import { EffectController } from './effect-controller.js';
-import { PhotoController } from './photo-controller.js';
-import { CREATURES, qualityProfile } from './creature-config.js';
+import { AREngine } from './ar-engine.js?v=20260726-game';
+import { TrackingEngine } from './tracking-engine.js?v=20260726-game';
+import { EffectController } from './effect-controller.js?v=20260726-game';
+import { PhotoController } from './photo-controller.js?v=20260726-game';
+import { CREATURES, qualityProfile } from './creature-config.js?v=20260726-game';
 
 const stage = document.querySelector('#stage');
 const effectsCanvas = document.querySelector('#effects');
@@ -21,6 +21,16 @@ const profile = qualityProfile();
 const effects = new EffectController(effectsCanvas, profile);
 let engine = null;
 let trackingMode = false;
+
+effects.setGameCallbacks({
+  onStateChange({ phase, collected, total }) {
+    photoButton.classList.toggle('is-fever', phase === 'fever' || phase === 'complete');
+    if (phase === 'orbit') status.textContent = 'クラゲが模型のまわりを一周しています';
+    if (phase === 'bubbles') status.textContent = `泡をタッチして星を救出しよう　${collected}/${total}`;
+    if (phase === 'fever') status.textContent = 'レインボーフィーバー！ 星を全部救出できたよ';
+    if (phase === 'complete') status.textContent = 'クリア！ クラゲと一緒に写真を撮ろう';
+  }
+});
 
 const photoController = new PhotoController({
   button: photoButton,
@@ -77,11 +87,14 @@ async function startExperience({ tracking, config }) {
       activeCreature.textContent = `${config.icon} ${config.label}`;
       activeCreature.hidden = false;
       photoController.setEnabled(true);
-      status.textContent = result.renderMode === 'sprite2d'
-        ? `夢かわ${config.label}の2Dアニメーションを表示中`
-        : result.usedPlaceholder
+      if (result.renderMode === 'sprite2d') {
+        effects.restartGame(config.key);
+        status.textContent = 'クラゲが模型のまわりを一周しています';
+      } else {
+        status.textContent = result.usedPlaceholder
           ? `仮の${config.label}モデルを表示中`
           : `${config.label}モデルを表示中`;
+      }
     }
   } catch (error) {
     console.warn('ARを開始できませんでした。', error);
@@ -97,16 +110,21 @@ async function startExperience({ tracking, config }) {
   }
 }
 
-function handleTargetFound(key, config) {
+function handleTargetFound(key, config, detail = {}) {
   trackingGuide.hidden = true;
-  activeCreature.textContent = `${config.icon} ${config.label}を認識`;
+  activeCreature.textContent = detail.rough
+    ? `${config.icon} ${config.label}をかんたん認識`
+    : `${config.icon} ${config.label}を認識`;
   activeCreature.hidden = false;
   photoController.setEnabled(true);
-  status.textContent = `${config.label}が現れました。スマホをゆっくり動かしてみよう`;
+  status.textContent = key === 'jellyfish'
+    ? 'クラゲが模型のまわりを一周しています'
+    : `${config.label}が現れました。スマホをゆっくり動かしてみよう`;
 }
 
 function handleTargetLost(key, config) {
   if (!trackingMode) return;
+  photoButton.classList.remove('is-fever');
   activeCreature.hidden = true;
   trackingGuide.hidden = false;
   photoController.setEnabled(false);
@@ -120,7 +138,8 @@ function leaveWelcome() {
 
 resetButton.addEventListener('click', () => {
   engine?.reset?.();
-  status.textContent = '泳ぎを最初の状態へ戻しました';
+  if (effects.activeKey === 'jellyfish') effects.restartGame('jellyfish');
+  else status.textContent = '泳ぎを最初の状態へ戻しました';
 });
 
 addEventListener('pagehide', () => engine?.stop?.());

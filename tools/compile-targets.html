@@ -31,9 +31,22 @@
         image.onerror = reject;
       });
     })).then(async () => {
+      const crop = (image, x, y, width, height) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d').drawImage(image, x, y, width, height, 0, 0, width, height);
+        return canvas;
+      };
+      const jellyfish = images[0];
+      const targets = [
+        ...images,
+        crop(jellyfish, 0, 0, 390, 600),
+        crop(jellyfish, 0, 330, 900, 270)
+      ];
       status.textContent = '特徴点を解析しています… 0%';
       const compiler = new window.MINDAR.IMAGE.Compiler();
-      await compiler.compileImageTargets(images, (progress) => {
+      await compiler.compileImageTargets(targets, (progress) => {
         status.textContent = `特徴点を解析しています… ${Math.round(progress)}%`;
       });
       const buffer = await compiler.exportData();
@@ -56,7 +69,7 @@
       }
 
       const destination = savedLocally ? 'ローカル保存済み' : '下のボタンから保存できます';
-      status.textContent = `完了：3種類・${Math.round(blob.size / 1024)}KB・${destination}`;
+      status.textContent = `完了：3種類・5ターゲット・${Math.round(blob.size / 1024)}KB・${destination}`;
       document.documentElement.dataset.ready = 'true';
     }).catch((error) => {
       console.error(error);

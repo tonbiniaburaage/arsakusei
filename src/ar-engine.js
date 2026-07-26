@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CreatureController } from './creature-controller.js';
+import { CreatureController } from './creature-controller.js?v=20260726-game';
 
 export class AREngine {
   constructor(container, config, profile, effects) {
