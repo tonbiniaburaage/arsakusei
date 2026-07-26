@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>レジン模型 認識カード生成</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: #111; }
+    body { display: grid; place-items: start; }
+    canvas { display: block; width: 900px; height: 600px; }
+  </style>
+</head>
+<body>
+  <canvas id="card" width="1200" height="800" aria-label="認識カード"></canvas>
+  <script>
+    const specs = {
+      jellyfish: {
+        key: 'JELLYFISH',
+        label: 'クラゲ',
+        number: '01',
+        colors: ['#28194f', '#7957c8', '#ff9fd8', '#9ee9ff'],
+        crop: [70, 760, 930, 780],
+        symbol: '✦'
+      },
+      whale: {
+        key: 'WHALE',
+        label: 'クジラ',
+        number: '02',
+        colors: ['#072b4f', '#087f9c', '#8be8ff', '#d7fbff'],
+        crop: [0, 1400, 1550, 1050],
+        symbol: '≈'
+      },
+      turtle: {
+        key: 'TURTLE',
+        label: 'ウミガメ',
+        number: '03',
+        colors: ['#123f46', '#3d8f83', '#ffd27a', '#bfffe2'],
+        crop: [900, 500, 1200, 850],
+        symbol: '⬡'
+      }
+    };
+
+    const creature = new URLSearchParams(location.search).get('creature') || 'jellyfish';
+    const spec = specs[creature] || specs.jellyfish;
+    const canvas = document.querySelector('#card');
+    const ctx = canvas.getContext('2d');
+    const image = new Image();
+    image.src = '../assets/targets/resin-models-reference.png';
+    image.onload = () => {
+      drawCard();
+      document.documentElement.dataset.ready = 'true';
+    };
+
+    function drawCard() {
+      const [dark, mid, accent, pale] = spec.colors;
+      const background = ctx.createLinearGradient(0, 0, 1200, 800);
+      background.addColorStop(0, dark);
+      background.addColorStop(.58, mid);
+      background.addColorStop(1, dark);
+      ctx.fillStyle = background;
+      ctx.fillRect(0, 0, 1200, 800);
+
+      // Cards intentionally use different, asymmetric high-feature patterns.
+      const seed = Number(spec.number);
+      for (let i = 0; i < 36; i++) {
+        const x = 34 + ((i * 137 + seed * 53) % 1120);
+        const y = 26 + ((i * 89 + seed * 97) % 735);
+        const r = 4 + ((i * 7 + seed) % 17);
+        ctx.globalAlpha = .2 + (i % 4) * .08;
+        ctx.strokeStyle = i % 3 === 0 ? accent : pale;
+        ctx.lineWidth = 2 + (i % 3);
+        ctx.beginPath();
+        if (creature === 'turtle') {
+          polygon(x, y, r + 8, 6, i * .21);
+        } else if (creature === 'whale') {
+          ctx.arc(x, y, r + 5, Math.PI * .12, Math.PI * 1.28);
+        } else {
+          star(x, y, r + 5, i * .17);
+        }
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+
+      // Photo window.
+      roundedRect(470, 74, 650, 652, 46);
+      ctx.save();
+      ctx.clip();
+      const [sx, sy, sw, sh] = spec.crop;
+      ctx.drawImage(image, sx, sy, sw, sh, 470, 74, 650, 652);
+      const photoShade = ctx.createLinearGradient(470, 74, 1120, 726);
+      photoShade.addColorStop(0, 'rgba(255,255,255,.08)');
+      photoShade.addColorStop(1, 'rgba(20,5,50,.24)');
+      ctx.fillStyle = photoShade;
+      ctx.fillRect(470, 74, 650, 652);
+      ctx.restore();
+      ctx.strokeStyle = pale;
+      ctx.lineWidth = 7;
+      roundedRect(470, 74, 650, 652, 46);
+      ctx.stroke();
+
+      // Left label block.
+      ctx.fillStyle = 'rgba(5,8,25,.38)';
+      roundedRect(62, 68, 350, 662, 40);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.42)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.fillStyle = pale;
+      ctx.font = '900 128px -apple-system,BlinkMacSystemFont,sans-serif';
+      ctx.fillText(spec.symbol, 98, 210);
+      ctx.fillStyle = '#fff';
+      ctx.font = '900 76px -apple-system,BlinkMacSystemFont,sans-serif';
+      ctx.fillText(spec.label, 92, 330);
+      ctx.fillStyle = accent;
+      ctx.font = '800 28px -apple-system,BlinkMacSystemFont,sans-serif';
+      ctx.letterSpacing = '5px';
+      ctx.fillText(spec.key, 96, 383);
+      ctx.letterSpacing = '0px';
+
+      ctx.fillStyle = 'rgba(255,255,255,.82)';
+      ctx.font = '600 20px -apple-system,BlinkMacSystemFont,sans-serif';
+      ctx.fillText('DREAMY OCEAN AR', 96, 638);
+      ctx.fillStyle = pale;
+      ctx.font = '900 74px -apple-system,BlinkMacSystemFont,sans-serif';
+      ctx.fillText(spec.number, 92, 590);
+
+      // Unique corner registration pattern.
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 10;
+      ctx.beginPath();
+      ctx.moveTo(24, 118); ctx.lineTo(24, 24); ctx.lineTo(118, 24);
+      ctx.moveTo(1082, 24); ctx.lineTo(1176, 24); ctx.lineTo(1176, 118);
+      ctx.moveTo(1176, 682); ctx.lineTo(1176, 776); ctx.lineTo(1082, 776);
+      ctx.moveTo(118, 776); ctx.lineTo(24, 776); ctx.lineTo(24, 682);
+      ctx.stroke();
+    }
+
+    function roundedRect(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, r);
+    }
+
+    function polygon(x, y, radius, sides, rotation) {
+      for (let i = 0; i < sides; i++) {
+        const angle = rotation + i * Math.PI * 2 / sides;
+        const px = x + Math.cos(angle) * radius;
+        const py = y + Math.sin(angle) * radius;
+        i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+      }
+      ctx.closePath();
+    }
+
+    function star(x, y, radius, rotation) {
+      for (let i = 0; i < 8; i++) {
+        const rr = i % 2 ? radius * .38 : radius;
+        const angle = rotation + i * Math.PI / 4;
+        const px = x + Math.cos(angle) * rr;
+        const py = y + Math.sin(angle) * rr;
+        i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+      }
+      ctx.closePath();
+    }
+  </script>
+</body>
+</html>

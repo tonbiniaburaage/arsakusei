@@ -20,6 +20,7 @@
   <main id="app">
     <video id="camera" autoplay playsinline muted aria-label="カメラ映像" hidden></video>
     <div id="stage" aria-hidden="true"></div>
+    <canvas id="effects" aria-hidden="true"></canvas>
 
     <header class="hud">
       <p class="eyebrow">DREAMY OCEAN</p>
@@ -29,12 +30,20 @@
 
     <section id="welcome" class="welcome">
       <div class="welcome__icon" aria-hidden="true">✦</div>
-      <h2>作品をカメラに映してみよう</h2>
-      <p>カメラを許可すると、海のなかまが飛び出します。</p>
+      <h2>模型から海のなかまが飛び出すよ</h2>
+      <p>模型と一緒に置いた認識カードを映すと、クラゲ・クジラ・ウミガメを自動で見分けます。</p>
       <button id="start-button" class="primary-button">ARをはじめる</button>
-      <button id="demo-button" class="text-button">カメラなしで5匹の動きを見る</button>
-      <a class="target-link" href="./target-card.html" target="_blank" rel="noopener">テスト用カードを表示・印刷</a>
-      <p class="privacy-note">映像は端末内だけで使われ、送信されません。</p>
+      <div class="demo-row">
+        <label for="demo-creature">カメラなし確認</label>
+        <select id="demo-creature">
+          <option value="jellyfish">クラゲ</option>
+          <option value="whale">クジラ</option>
+          <option value="turtle">ウミガメ</option>
+        </select>
+        <button id="demo-button" class="text-button">動きを見る</button>
+      </div>
+      <a class="target-link" href="./target-card.html" target="_blank" rel="noopener">3種類の認識カードを表示・印刷</a>
+      <p class="privacy-note">カメラ映像は端末内だけで使われ、送信されません。</p>
     </section>
 
     <div id="tracking-guide" class="tracking-guide" hidden>
@@ -42,10 +51,31 @@
       <span class="tracking-guide__corner tracking-guide__corner--tr"></span>
       <span class="tracking-guide__corner tracking-guide__corner--bl"></span>
       <span class="tracking-guide__corner tracking-guide__corner--br"></span>
-      <p>テスト用カードを枠の中に映してください</p>
+      <p>模型の下にある認識カードを枠の中に映してね</p>
     </div>
-    <div id="phase-badge" class="phase-badge" hidden>Phase 3 · 画像追跡 + 5匹</div>
-    <button id="reset-button" class="icon-button icon-button--right" aria-label="3Dモデルを元の位置に戻す" hidden>↻</button>
+
+    <div id="active-creature" class="active-creature" hidden></div>
+    <div id="phase-badge" class="phase-badge" hidden>Phase 7 · 展示版</div>
+
+    <button id="photo-button" class="photo-button" aria-label="AR写真を撮る" hidden disabled>
+      <span class="photo-button__lens"></span>
+    </button>
+    <button id="reset-button" class="icon-button icon-button--right" aria-label="泳ぎをリセット" hidden>↻</button>
+
+    <div id="capture-countdown" class="capture-countdown" hidden aria-live="assertive">✦</div>
+    <div id="capture-flash" class="capture-flash" aria-hidden="true"></div>
+    <div id="toast" class="toast" role="status" hidden></div>
+
+    <section id="photo-preview" class="photo-preview" hidden aria-label="撮影したAR写真">
+      <div class="photo-preview__panel">
+        <h2>AR写真が撮れました</h2>
+        <img id="photo-image" alt="撮影したAR写真">
+        <div class="photo-preview__actions">
+          <button id="photo-save" class="primary-button">共有・保存</button>
+          <button id="photo-close" class="secondary-button">閉じる</button>
+        </div>
+      </div>
+    </section>
   </main>
 
   <script type="module" src="./src/main.js"></script>

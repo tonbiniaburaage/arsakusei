@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MindAR 複数ターゲット生成</title>
+  <style>
+    body { margin: 40px; color: #fff; background: #151022; font-family: sans-serif; }
+    img { width: 240px; margin: 8px; }
+    a { display: inline-block; padding: 12px 18px; border-radius: 999px; color: #241743; background: #eee4ff; font-weight: 800; }
+  </style>
+</head>
+<body>
+  <h1>認識データを生成中</h1>
+  <p id="status" role="status">画像を読み込んでいます…</p>
+  <div>
+    <img src="../assets/targets/jellyfish-card.png" alt="クラゲ" data-target>
+    <img src="../assets/targets/whale-card.png" alt="クジラ" data-target>
+    <img src="../assets/targets/turtle-card.png" alt="ウミガメ" data-target>
+  </div>
+  <a id="download" hidden>creature-targets.mind を保存</a>
+  <script type="module">
+    await import('https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js');
+    const status = document.querySelector('#status');
+    const images = [...document.querySelectorAll('[data-target]')];
+
+    Promise.all(images.map((image) => {
+      if (image.complete) return Promise.resolve();
+      return new Promise((resolve, reject) => {
+        image.onload = resolve;
+        image.onerror = reject;
+      });
+    })).then(async () => {
+      status.textContent = '特徴点を解析しています… 0%';
+      const compiler = new window.MINDAR.IMAGE.Compiler();
+      await compiler.compileImageTargets(images, (progress) => {
+        status.textContent = `特徴点を解析しています… ${Math.round(progress)}%`;
+      });
+      const buffer = await compiler.exportData();
+      const blob = new Blob([buffer], { type: 'application/octet-stream' });
+      const link = document.querySelector('#download');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'creature-targets.mind';
+      link.hidden = false;
+
+      let savedLocally = false;
+      try {
+        const saveResponse = await fetch('/__save-targets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/octet-stream' },
+          body: blob
+        });
+        savedLocally = saveResponse.ok;
+      } catch {
+        // GitHub PagesなどPOSTを受け取れない環境ではダウンロードだけ提供する。
+      }
+
+      const destination = savedLocally ? 'ローカル保存済み' : '下のボタンから保存できます';
+      status.textContent = `完了：3種類・${Math.round(blob.size / 1024)}KB・${destination}`;
+      document.documentElement.dataset.ready = 'true';
+    }).catch((error) => {
+      console.error(error);
+      status.textContent = `生成に失敗しました：${error.message || error}`;
+      document.documentElement.dataset.error = 'true';
+    });
+  </script>
+</body>
+</html>

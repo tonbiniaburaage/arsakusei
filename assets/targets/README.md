@@ -1,15 +1,29 @@
 # 画像追跡ターゲット
 
-現在の `demo-card.png` と `demo-card.mind` は、Phase 2の技術確認用にMindAR公式サンプルから取得した仮ターゲットです。
+提供されたレジン模型写真から、模型の種類ごとに識別しやすい色・文字・模様を加えた3枚の認識カードを作成しています。
 
-出典: https://github.com/hiukim/mind-ar-js/tree/1.2.5/examples/image-tracking/assets/card-example
+## ターゲット順
 
-実物作品の撮影条件が決まったら、次の手順で差し替えます。
+MindARのインデックスは次の順番で固定しています。
 
-1. レジン作品の下に置くカードまたは台座を、展示時と近い照明で正面から撮影
-2. MindAR Image Targets Compilerへ画像を入れる
-3. 特徴点が画像全体へ十分に分散していることを確認
-4. 出力されたファイルを `artwork.mind` としてこのフォルダへ保存
-5. `src/tracking-engine.js` の `imageTargetSrc` を変更
+| Index | 種類 | カード |
+| --- | --- | --- |
+| 0 | クラゲ | `jellyfish-card.png` |
+| 1 | クジラ | `whale-card.png` |
+| 2 | ウミガメ | `turtle-card.png` |
 
-単色、反射が強い面、同じ模様の繰り返しは避け、文字・輪郭・細かな模様が不規則に含まれる画像を使ってください。
+3枚をまとめた認識データが `creature-targets.mind` です。`src/creature-config.js` の `targetIndex` と同じ順序を維持してください。
+
+## 展示方法
+
+- カードはカラー印刷し、可能ならA5前後のサイズにする
+- 光沢紙を避け、反射しにくいマット紙を使う
+- 対応する模型をカードの写真部分またはすぐ手前へ置く
+- スマートフォンからカードの四隅が見えるようにする
+- 模型でカードの文字や四隅の模様を隠しすぎない
+
+## 再生成
+
+`tools/dev-server.py` でローカルサーバーを起動し、`tools/compile-targets.html` を開くと3枚を再コンパイルできます。通常の静的サーバーでは、生成後に表示されるボタンから `creature-targets.mind` を保存してください。
+
+`demo-card.png` と `demo-card.mind` は以前のPhase 2確認用で、現在の本番追跡には使用していません。

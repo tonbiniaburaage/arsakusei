@@ -11,15 +11,17 @@ export class CreatureController {
     this.instances = [];
     this.timeOrigin = 0;
     this.lastElapsed = 0;
+    this.photoBlend = 0;
+    this.photoMode = false;
     this.parent.add(this.root);
   }
 
   async load() {
     const source = await this.loadSource();
-    const population = this.config.population || [{ size: 1, base: [0, 0, 0], range: [0, 0, 0], speed: 1, phase: 0 }];
+    const population = this.config.population;
 
     population.forEach((motion, index) => {
-      const object = source.scene ? cloneSkeleton(source.scene) : this.createJellyfishPlaceholder();
+      const object = source.scene ? cloneSkeleton(source.scene) : this.createPlaceholder();
       const instance = new THREE.Group();
       const visual = new THREE.Group();
       visual.add(object);
@@ -37,7 +39,7 @@ export class CreatureController {
       this.applyMotion(instance, 0, index);
     });
 
-    return { usedPlaceholder: !source.scene, count: this.instances.length };
+    return { usedPlaceholder: !source.scene, count: this.instances.length, key: this.config.key };
   }
 
   async loadSource() {
@@ -45,7 +47,7 @@ export class CreatureController {
       const response = await fetch(this.config.modelUrl, { method: 'HEAD' });
       if (response.ok) return await new GLTFLoader().loadAsync(this.config.modelUrl);
     } catch (error) {
-      console.info('GLBモデルを読み込めないため仮モデルを表示します。', error);
+      console.info(`${this.config.label}のGLBを読み込めないため仮モデルを表示します。`, error);
     }
     return { scene: null, animations: [] };
   }
@@ -60,20 +62,29 @@ export class CreatureController {
     object.scale.setScalar(scale);
   }
 
-  createJellyfishPlaceholder() {
-    const group = new THREE.Group();
-    const material = new THREE.MeshPhysicalMaterial({
+  createPlaceholder() {
+    if (this.config.key === 'whale') return this.createWhalePlaceholder();
+    if (this.config.key === 'turtle') return this.createTurtlePlaceholder();
+    return this.createJellyfishPlaceholder();
+  }
+
+  createMaterial(opacity = 0.88) {
+    return new THREE.MeshPhysicalMaterial({
       color: this.config.colors.body,
       emissive: this.config.colors.glow,
-      emissiveIntensity: 0.16,
-      roughness: 0.24,
+      emissiveIntensity: 0.13,
+      roughness: 0.3,
       transparent: true,
-      opacity: 0.82,
-      transmission: 0.18,
-      thickness: 0.5,
+      opacity,
+      transmission: 0.1,
+      thickness: 0.4,
       side: THREE.DoubleSide
     });
+  }
 
+  createJellyfishPlaceholder() {
+    const group = new THREE.Group();
+    const material = this.createMaterial(0.82);
     const bell = new THREE.Mesh(
       new THREE.SphereGeometry(0.72, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.62),
       material
@@ -110,11 +121,131 @@ export class CreatureController {
       tentacle.userData.tentaclePhase = index * 0.7;
       group.add(tentacle);
     }
-
-    const glow = new THREE.PointLight(this.config.colors.glow, 1.5, 3);
-    glow.position.set(0, 0.2, 0.5);
-    group.add(glow);
+    group.add(this.createGlow());
     return group;
+  }
+
+  createWhalePlaceholder() {
+    const group = new THREE.Group();
+    const material = this.createMaterial(0.9);
+    const pale = new THREE.MeshStandardMaterial({
+      color: 0xdff8ff,
+      emissive: this.config.colors.glow,
+      emissiveIntensity: 0.08,
+      transparent: true,
+      opacity: 0.82
+    });
+
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.78, 24, 16), material);
+    body.scale.set(1.55, 0.62, 0.68);
+    group.add(body);
+
+    const belly = new THREE.Mesh(new THREE.SphereGeometry(0.64, 20, 12), pale);
+    belly.scale.set(1.36, 0.36, 0.58);
+    belly.position.set(0.08, -0.28, 0);
+    group.add(belly);
+
+    const tailRoot = new THREE.Group();
+    tailRoot.position.x = -1.3;
+    tailRoot.userData.tail = true;
+    for (const side of [-1, 1]) {
+      const tail = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.72, 3), material);
+      tail.rotation.z = side * Math.PI * 0.48;
+      tail.rotation.x = Math.PI / 2;
+      tail.position.set(-0.18, side * 0.25, 0);
+      tailRoot.add(tail);
+    }
+    group.add(tailRoot);
+
+    for (const side of [-1, 1]) {
+      const fin = new THREE.Mesh(new THREE.ConeGeometry(0.26, 0.72, 3), material);
+      fin.rotation.z = side * Math.PI * 0.5;
+      fin.rotation.x = Math.PI / 2;
+      fin.position.set(0.15, -0.22, side * 0.55);
+      group.add(fin);
+    }
+
+    const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0x23395d });
+    for (const side of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8), eyeMaterial);
+      eye.position.set(0.7, 0.14, side * 0.55);
+      group.add(eye);
+    }
+    group.add(this.createGlow());
+    return group;
+  }
+
+  createTurtlePlaceholder() {
+    const group = new THREE.Group();
+    const material = this.createMaterial(0.9);
+    const shellMaterial = new THREE.MeshPhysicalMaterial({
+      color: this.config.colors.body,
+      emissive: this.config.colors.glow,
+      emissiveIntensity: 0.11,
+      roughness: 0.38,
+      transparent: true,
+      opacity: 0.9
+    });
+
+    const shell = new THREE.Mesh(new THREE.SphereGeometry(0.72, 24, 16), shellMaterial);
+    shell.scale.set(1.08, 0.4, 0.82);
+    shell.position.y = 0.1;
+    group.add(shell);
+
+    const shellRim = new THREE.Mesh(
+      new THREE.TorusGeometry(0.62, 0.055, 8, 24),
+      new THREE.MeshStandardMaterial({
+        color: this.config.colors.accent,
+        emissive: this.config.colors.accent,
+        emissiveIntensity: 0.15,
+        transparent: true,
+        opacity: 0.68
+      })
+    );
+    shellRim.rotation.x = Math.PI / 2;
+    shellRim.scale.x = 1.18;
+    shellRim.position.y = 0.1;
+    group.add(shellRim);
+
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 16, 12), material);
+    head.position.x = 0.9;
+    head.scale.set(1.2, 0.85, 0.9);
+    group.add(head);
+
+    const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0x163f47 });
+    for (const side of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.025, 7, 7), eyeMaterial);
+      eye.position.set(1.1, 0.07, side * 0.15);
+      group.add(eye);
+    }
+
+    const flipperPositions = [
+      [0.45, -0.06, 0.65, 0.42],
+      [0.45, -0.06, -0.65, -0.42],
+      [-0.5, -0.04, 0.56, 0.2],
+      [-0.5, -0.04, -0.56, -0.2]
+    ];
+    flipperPositions.forEach(([x, y, z, angle], index) => {
+      const flipper = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 8), material);
+      flipper.scale.set(index < 2 ? 1.25 : 0.85, 0.2, 0.45);
+      flipper.position.set(x, y, z);
+      flipper.rotation.y = angle;
+      flipper.userData.flipper = true;
+      flipper.userData.flipperPhase = index * 1.4;
+      group.add(flipper);
+    });
+    group.add(this.createGlow());
+    return group;
+  }
+
+  createGlow() {
+    const glow = new THREE.PointLight(this.config.colors.glow, 1.35, 3);
+    glow.position.set(0, 0.2, 0.55);
+    return glow;
+  }
+
+  setPhotoMode(active) {
+    this.photoMode = active;
   }
 
   reset() {
@@ -125,9 +256,14 @@ export class CreatureController {
   update(delta, elapsed) {
     this.lastElapsed = elapsed;
     const localElapsed = elapsed - this.timeOrigin;
+    const photoTarget = this.photoMode ? 1 : 0;
+    this.photoBlend += (photoTarget - this.photoBlend) * Math.min(1, delta * 4.8);
+
     this.instances.forEach((instance, index) => {
       instance.userData.mixers.forEach((mixer) => mixer.update(delta * this.config.animationSpeed));
       this.applyMotion(instance, localElapsed, index);
+      this.applyPhotoPose(instance);
+      this.animateParts(instance, localElapsed);
     });
   }
 
@@ -136,6 +272,30 @@ export class CreatureController {
     const t = elapsed * motion.speed + motion.phase;
     const [bx, by, bz] = motion.base;
     const [rx, ry, rz] = motion.range;
+
+    if (motion.type === 'whale') {
+      instance.position.set(
+        (bx + Math.sin(t) * rx) * this.worldScale,
+        (by + Math.sin(t * 1.6) * ry) * this.worldScale,
+        (bz + Math.cos(t) * rz) * this.worldScale
+      );
+      instance.rotation.y = Math.atan2(Math.cos(t) * rx, -Math.sin(t) * rz) - Math.PI / 2;
+      instance.rotation.z = Math.sin(t * 1.2) * 0.08;
+      visual.rotation.x = Math.sin(t * 1.5) * 0.06;
+      return;
+    }
+
+    if (motion.type === 'turtle') {
+      instance.position.set(
+        (bx + Math.sin(t * 0.82) * rx) * this.worldScale,
+        (by + Math.sin(t * 1.35) * ry) * this.worldScale,
+        (bz + Math.sin(t * 0.54 + index) * rz) * this.worldScale
+      );
+      instance.rotation.y = Math.sin(t * 0.55) * 0.58;
+      instance.rotation.z = Math.sin(t * 0.72) * 0.07;
+      visual.rotation.x = Math.sin(t * 0.48) * 0.09;
+      return;
+    }
 
     instance.position.set(
       (bx + Math.sin(t * 0.73) * rx + Math.sin(t * 0.21 + index) * rx * 0.3) * this.worldScale,
@@ -146,10 +306,34 @@ export class CreatureController {
     instance.rotation.z = Math.sin(t * 0.83 + index * 0.4) * 0.1;
     visual.position.y = Math.sin(t * 1.7) * 0.035 * this.worldScale;
     visual.rotation.x = Math.sin(t * 0.42) * 0.08;
+  }
 
-    visual.traverse((object) => {
-      if (object.userData.tentaclePhase === undefined) return;
-      object.rotation.y = Math.sin(t * 2.1 + object.userData.tentaclePhase) * 0.12;
+  applyPhotoPose(instance) {
+    if (this.photoBlend < 0.005) return;
+    const { motion } = instance.userData;
+    const [x, y, z] = motion.photo;
+    const target = new THREE.Vector3(x, y, z).multiplyScalar(this.worldScale);
+    instance.position.lerp(target, this.photoBlend * 0.18);
+    if (motion.type === 'whale') instance.rotation.y *= 1 - this.photoBlend * 0.15;
+    if (motion.type === 'jellyfish') instance.rotation.y *= 1 - this.photoBlend * 0.4;
+  }
+
+  animateParts(instance, elapsed) {
+    const t = elapsed * this.config.animationSpeed;
+    instance.userData.visual.traverse((object) => {
+      if (object.userData.tentaclePhase !== undefined) {
+        object.rotation.y = Math.sin(t * 2.1 + object.userData.tentaclePhase) * 0.12;
+      }
+      if (object.userData.tail) {
+        object.rotation.y = Math.sin(t * 3.2) * 0.28;
+      }
+      if (object.userData.flipper) {
+        object.rotation.x = Math.sin(t * 2.1 + object.userData.flipperPhase) * 0.3;
+      }
     });
+  }
+
+  getEffectSources() {
+    return this.instances;
   }
 }
