@@ -1,312 +1,53 @@
 <!doctype html>
 <html lang="ja">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<title>ドリーミークラゲAR v4</title>
-<style>
-html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-#camera{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;background:#111}
-#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
-#scan{display:none}
-.hud{position:fixed;top:0;left:0;right:0;padding:calc(env(safe-area-inset-top) + 12px) 14px 12px;color:white;text-shadow:0 2px 10px rgba(0,0,0,.8);pointer-events:none}
-.hud .title{font-weight:800;font-size:16px}
-#status{font-size:13px;margin-top:4px}
-.controls{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 12px);display:flex;justify-content:center;gap:8px;flex-wrap:wrap}
-button{border:0;border-radius:999px;padding:12px 16px;font-size:15px;font-weight:800;background:rgba(255,255,255,.92);color:#222;box-shadow:0 2px 10px rgba(0,0,0,.28)}
-button.secondary{background:rgba(25,20,45,.7);color:white;border:1px solid rgba(255,255,255,.3)}
-.hidden{display:none!important}
-#hint{position:fixed;left:50%;top:52%;transform:translate(-50%,-50%);max-width:78vw;padding:10px 14px;border-radius:14px;background:rgba(20,10,45,.48);color:white;text-align:center;font-size:14px;pointer-events:none}
-#reticle{position:fixed;width:74px;height:74px;border:2px solid rgba(255,255,255,.92);border-radius:50%;transform:translate(-50%,-50%);display:none;box-shadow:0 0 22px rgba(190,170,255,.8);pointer-events:none}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="theme-color" content="#090616">
+  <title>ドリーミー海のなかま AR</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+        "mindar-image-three": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"
+      }
+    }
+  </script>
 </head>
 <body>
-<video id="camera" autoplay playsinline muted></video>
-<canvas id="fx"></canvas>
-<canvas id="scan" width="160" height="120"></canvas>
+  <main id="app">
+    <video id="camera" autoplay playsinline muted aria-label="カメラ映像" hidden></video>
+    <div id="stage" aria-hidden="true"></div>
 
-<div class="hud">
-  <div class="title">ドリーミークラゲAR</div>
-  <div id="status">「カメラ開始」を押してください</div>
-</div>
-<div id="hint" class="hidden">紫のクラゲを画面に入れてください。認識しにくい場合は模型を1回タップしてください。</div>
-<div id="reticle"></div>
+    <header class="hud">
+      <p class="eyebrow">DREAMY OCEAN</p>
+      <h1>海のなかま AR</h1>
+      <p id="status" role="status">「ARをはじめる」を押してください</p>
+    </header>
 
-<div class="controls">
-  <button id="startBtn">カメラ開始</button>
-  <button id="demoBtn" class="secondary">演出だけ試す</button>
-  <button id="resetBtn" class="secondary hidden">再認識</button>
-</div>
+    <section id="welcome" class="welcome">
+      <div class="welcome__icon" aria-hidden="true">✦</div>
+      <h2>作品をカメラに映してみよう</h2>
+      <p>カメラを許可すると、海のなかまが飛び出します。</p>
+      <button id="start-button" class="primary-button">ARをはじめる</button>
+      <button id="demo-button" class="text-button">カメラなしで5匹の動きを見る</button>
+      <a class="target-link" href="./target-card.html" target="_blank" rel="noopener">テスト用カードを表示・印刷</a>
+      <p class="privacy-note">映像は端末内だけで使われ、送信されません。</p>
+    </section>
 
-<script>
-(() => {
-const video=document.getElementById('camera');
-const canvas=document.getElementById('fx');
-const ctx=canvas.getContext('2d');
-const scan=document.getElementById('scan');
-const sctx=scan.getContext('2d',{willReadFrequently:true});
-const startBtn=document.getElementById('startBtn');
-const demoBtn=document.getElementById('demoBtn');
-const resetBtn=document.getElementById('resetBtn');
-const statusEl=document.getElementById('status');
-const hint=document.getElementById('hint');
-const reticle=document.getElementById('reticle');
+    <div id="tracking-guide" class="tracking-guide" hidden>
+      <span class="tracking-guide__corner tracking-guide__corner--tl"></span>
+      <span class="tracking-guide__corner tracking-guide__corner--tr"></span>
+      <span class="tracking-guide__corner tracking-guide__corner--bl"></span>
+      <span class="tracking-guide__corner tracking-guide__corner--br"></span>
+      <p>テスト用カードを枠の中に映してください</p>
+    </div>
+    <div id="phase-badge" class="phase-badge" hidden>Phase 3 · 画像追跡 + 5匹</div>
+    <button id="reset-button" class="icon-button icon-button--right" aria-label="3Dモデルを元の位置に戻す" hidden>↻</button>
+  </main>
 
-let vw=innerWidth,vh=innerHeight,dpr=1;
-let running=false,cameraReady=false,sequence=false,seqStart=0;
-let origin={x:.5,y:.62,size:.16};
-let targetRGB={r:105,g:95,b:170}, calibrated=false;
-let detectStable=0,lastDetect=0;
-let stars=[], bubbles=[], motes=[];
-
-function resize(){
-  vw=innerWidth; vh=innerHeight; dpr=Math.min(devicePixelRatio||1,2);
-  canvas.width=Math.floor(vw*dpr); canvas.height=Math.floor(vh*dpr);
-  canvas.style.width=vw+'px'; canvas.style.height=vh+'px';
-  ctx.setTransform(dpr,0,0,dpr,0,0);
-}
-addEventListener('resize',resize); resize();
-
-async function startCamera(){
-  try{
-    const stream=await navigator.mediaDevices.getUserMedia({
-      video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},
-      audio:false
-    });
-    video.srcObject=stream; await video.play();
-    cameraReady=true; running=true;
-    startBtn.classList.add('hidden'); resetBtn.classList.remove('hidden'); hint.classList.remove('hidden');
-    statusEl.textContent='クラゲを探しています…';
-    requestAnimationFrame(loop);
-  }catch(e){statusEl.textContent='カメラを開始できません: '+(e.message||e);}
-}
-startBtn.onclick=startCamera;
-demoBtn.onclick=()=>{origin={x:.5,y:.64,size:.17}; startSequence(); if(!running){running=true;requestAnimationFrame(loop);}};
-resetBtn.onclick=()=>{sequence=false;detectStable=0;stars=[];bubbles=[];motes=[];statusEl.textContent='クラゲを探しています…';};
-
-video.addEventListener('pointerdown',e=>{
-  if(!cameraReady||sequence) return;
-  drawScan();
-  const rect=video.getBoundingClientRect();
-  const scale=Math.max(rect.width/video.videoWidth,rect.height/video.videoHeight);
-  const shownW=video.videoWidth*scale, shownH=video.videoHeight*scale;
-  const ox=(shownW-rect.width)/2, oy=(shownH-rect.height)/2;
-  const vx=(e.clientX+ox)/scale, vy=(e.clientY+oy)/scale;
-  const sx=Math.max(2,Math.min(scan.width-3,Math.round(vx/video.videoWidth*scan.width)));
-  const sy=Math.max(2,Math.min(scan.height-3,Math.round(vy/video.videoHeight*scan.height)));
-  const dat=sctx.getImageData(sx-2,sy-2,5,5).data;
-  let r=0,g=0,b=0,n=0; for(let i=0;i<dat.length;i+=4){r+=dat[i];g+=dat[i+1];b+=dat[i+2];n++}
-  targetRGB={r:r/n,g:g/n,b:b/n}; calibrated=true;
-  statusEl.textContent='模型の色を学習しました';
-});
-
-function drawScan(){if(video.videoWidth)sctx.drawImage(video,0,0,scan.width,scan.height);}
-function detect(){
-  drawScan();
-  const dat=sctx.getImageData(0,0,scan.width,scan.height).data;
-  let sx=0,sy=0,count=0,minx=999,miny=999,maxx=0,maxy=0;
-  const tr=targetRGB.r,tg=targetRGB.g,tb=targetRGB.b;
-  const tol=calibrated?78:72;
-  for(let y=0;y<scan.height;y+=2){
-    for(let x=0;x<scan.width;x+=2){
-      const i=(y*scan.width+x)*4, r=dat[i],g=dat[i+1],b=dat[i+2];
-      const dist=Math.hypot(r-tr,g-tg,b-tb);
-      const purpleish=calibrated?true:(b>g*1.08 && r>g*.98 && b>80);
-      if(dist<tol && purpleish){
-        sx+=x;sy+=y;count++; if(x<minx)minx=x;if(x>maxx)maxx=x;if(y<miny)miny=y;if(y>maxy)maxy=y;
-      }
-    }
-  }
-  if(count<35)return null;
-  const cx=sx/count,cy=sy/count,box=Math.max(maxx-minx,maxy-miny);
-  const scale=Math.max(vw/video.videoWidth,vh/video.videoHeight);
-  const shownW=video.videoWidth*scale,shownH=video.videoHeight*scale;
-  const ox=(shownW-vw)/2,oy=(shownH-vh)/2;
-  const vx=cx/scan.width*video.videoWidth,vy=cy/scan.height*video.videoHeight;
-  return {x:(vx*scale-ox)/vw,y:(vy*scale-oy)/vh,size:Math.max(.07,Math.min(.28,(box/scan.width*video.videoWidth*scale)/vw))};
-}
-
-function startSequence(){
-  if(sequence)return;
-  sequence=true; seqStart=performance.now(); detectStable=0;
-  hint.classList.add('hidden'); statusEl.textContent='ドリーミークラゲが目覚めました';
-  stars=[];bubbles=[];motes=[];
-}
-
-const lerp=(a,b,t)=>a+(b-a)*t;
-const ease=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
-function state(ms){
-  const t=ms/1000;
-  let p={x:origin.x,y:origin.y},scale=origin.size*3,alpha=0,glow=0,trail=0,spin=0;
-  if(t<1.4){
-    const q=ease(t/1.4); alpha=lerp(.06,.95,q); glow=q;
-    scale=origin.size*lerp(2.5,4.1,q); trail=q*.25; spin=q*.08;
-  }else if(t<7.8){
-    const q=(t-1.4)/6.4, a=q*Math.PI*2;
-    p.x=.5+.4*Math.sin(a);
-    p.y=.48+.24*Math.sin(a*2)*.76-.06*Math.cos(a);
-    const near=(Math.sin(q*Math.PI*3-Math.PI/2)+1)/2;
-    scale=origin.size*(4.5+near*4.5);
-    alpha=.95;glow=1;trail=.9;spin=Math.sin(a)*.14;
-  }else{
-    const q=ease((t-7.8)/2.2);
-    p.x=lerp(.52,origin.x,q)+Math.sin(q*Math.PI*5)*(1-q)*.12;
-    p.y=lerp(.18,origin.y,q);
-    scale=origin.size*lerp(5.4,2.0,q);
-    alpha=lerp(.95,0,q);glow=1-q*.7;trail=1-q;spin=(1-q)*.18;
-  }
-  return {t,p,scale,alpha,glow,trail,spin};
-}
-
-function starPath(x,y,r,rot=0){
-  ctx.beginPath();
-  for(let i=0;i<10;i++){
-    const rr=i%2===0?r:r*.45,ang=rot-Math.PI/2+i*Math.PI/5;
-    const px=x+Math.cos(ang)*rr,py=y+Math.sin(ang)*rr;
-    if(i===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);
-  }
-  ctx.closePath();
-}
-
-function drawDreamyJelly(x,y,r,alpha,time,glow,spin){
-  ctx.save();
-  ctx.translate(x,y);ctx.rotate(spin);
-  const pulse=1+Math.sin(time*5.4)*.045;
-  ctx.scale(pulse,1/pulse*.99); ctx.globalAlpha=alpha;
-
-  // aura
-  ctx.shadowBlur=36*glow; ctx.shadowColor='rgba(180,155,255,.95)';
-  const aura=ctx.createRadialGradient(0,-r*.1,r*.1,0,0,r*1.25);
-  aura.addColorStop(0,'rgba(255,245,255,.45)'); aura.addColorStop(1,'rgba(145,110,255,0)');
-  ctx.fillStyle=aura;ctx.beginPath();ctx.arc(0,0,r*1.25,0,Math.PI*2);ctx.fill();
-
-  // bell
-  const grad=ctx.createRadialGradient(-r*.22,-r*.38,r*.06,0,-r*.08,r*1.05);
-  grad.addColorStop(0,'rgba(255,255,255,.96)');
-  grad.addColorStop(.25,'rgba(225,198,255,.95)');
-  grad.addColorStop(.55,'rgba(166,145,250,.88)');
-  grad.addColorStop(1,'rgba(102,78,220,.34)');
-  ctx.fillStyle=grad;
-  ctx.beginPath();
-  ctx.moveTo(-r*.93,0);
-  ctx.bezierCurveTo(-r*.86,-r*.98,r*.86,-r*.98,r*.93,0);
-  ctx.bezierCurveTo(r*.7,r*.18,r*.38,r*.23,0,r*.19);
-  ctx.bezierCurveTo(-r*.38,r*.23,-r*.7,r*.18,-r*.93,0);
-  ctx.fill();
-
-  // rim
-  ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineWidth=Math.max(1.2,r*.028);ctx.stroke();
-
-  // face
-  ctx.shadowBlur=0;
-  ctx.fillStyle='rgba(74,53,140,.95)';
-  ctx.beginPath();ctx.arc(-r*.28,-r*.08,r*.055,0,Math.PI*2);ctx.arc(r*.28,-r*.08,r*.055,0,Math.PI*2);ctx.fill();
-  ctx.strokeStyle='rgba(74,53,140,.95)';ctx.lineWidth=Math.max(1.5,r*.035);ctx.lineCap='round';
-  ctx.beginPath();ctx.arc(0,-r*.015,r*.12,.15*Math.PI,.85*Math.PI);ctx.stroke();
-
-  // blush
-  ctx.fillStyle='rgba(255,155,205,.45)';
-  ctx.beginPath();ctx.ellipse(-r*.43,r*.02,r*.11,r*.06,0,0,Math.PI*2);ctx.ellipse(r*.43,r*.02,r*.11,r*.06,0,0,Math.PI*2);ctx.fill();
-
-  // embedded dream stars
-  const starPos=[[-.35,-.38,.12,0],[.03,-.47,.095,.4],[.38,-.31,.11,.2],[-.02,-.27,.075,.6]];
-  const cols=['rgba(255,225,95,.95)','rgba(255,175,220,.95)','rgba(170,225,255,.95)','rgba(255,250,255,.9)'];
-  starPos.forEach((s,i)=>{ctx.fillStyle=cols[i];starPath(s[0]*r,s[1]*r,s[2]*r,time*.4+s[3]);ctx.fill();});
-
-  // tentacles - soft ribbons
-  for(let i=0;i<8;i++){
-    const xx=(i-3.5)*r*.18,phase=time*3+i*.55,len=r*(1.18+(i%3)*.14);
-    const ribbon=ctx.createLinearGradient(xx,0,xx,len);
-    ribbon.addColorStop(0,'rgba(220,200,255,.78)');
-    ribbon.addColorStop(.55,i%2?'rgba(170,210,255,.68)':'rgba(235,180,255,.7)');
-    ribbon.addColorStop(1,'rgba(170,145,255,.08)');
-    ctx.strokeStyle=ribbon;ctx.lineWidth=Math.max(2,r*.07);ctx.lineCap='round';
-    ctx.beginPath();ctx.moveTo(xx,r*.12);
-    ctx.bezierCurveTo(xx+Math.sin(phase)*r*.12,len*.32,xx+Math.sin(phase+1.4)*r*.18,len*.68,xx+Math.sin(phase+2.2)*r*.13,len);
-    ctx.stroke();
-  }
-
-  ctx.restore();
-}
-
-function spawnFX(x,y,r,st){
-  if(st.t<1.2){
-    for(let i=0;i<2;i++)motes.push({x:x+(Math.random()-.5)*r*1.2,y:y+(Math.random()-.5)*r*.8,vx:(Math.random()-.5)*.3,vy:-.2-Math.random()*.25,life:1,size:1+Math.random()*3});
-  } else if(st.t<7.8){
-    if(Math.random()<.7)stars.push({x:x+(Math.random()-.5)*r*.9,y:y+(Math.random()-.5)*r*.7,vx:(Math.random()-.5)*.5,vy:(Math.random()-.5)*.4,life:1,size:4+Math.random()*8,rot:Math.random()*6});
-    if(Math.random()<.35)bubbles.push({x:x+(Math.random()-.5)*r*.8,y:y+(Math.random()-.5)*r*.4,vx:(Math.random()-.5)*.15,vy:-.4-Math.random()*.35,life:1,size:5+Math.random()*14});
-  } else {
-    if(Math.random()<.8)stars.push({x:x+(Math.random()-.5)*r*1.2,y:y+(Math.random()-.5)*r*1.0,vx:(origin.x*vw-x)*.002,vy:(origin.y*vh-y)*.002,life:.75,size:4+Math.random()*7,rot:Math.random()*6});
-  }
-}
-
-function drawFX(dt){
-  ctx.save();
-  for(const s of stars){
-    s.x+=s.vx*dt*60;s.y+=s.vy*dt*60;s.life-=dt*.7;s.rot+=dt*2;
-    ctx.globalAlpha=Math.max(0,s.life)*.9;
-    ctx.shadowBlur=12;ctx.shadowColor='rgba(225,200,255,.95)';
-    ctx.fillStyle=s.rot%2>1?'rgba(255,223,110,.95)':'rgba(225,190,255,.95)';
-    starPath(s.x,s.y,s.size,s.rot);ctx.fill();
-  }
-  for(const b of bubbles){
-    b.x+=b.vx*dt*60;b.y+=b.vy*dt*60;b.life-=dt*.38;
-    ctx.globalAlpha=Math.max(0,b.life)*.65;ctx.shadowBlur=8;ctx.shadowColor='rgba(190,220,255,.7)';
-    ctx.strokeStyle='rgba(220,235,255,.9)';ctx.lineWidth=1.4;ctx.beginPath();ctx.arc(b.x,b.y,b.size,0,Math.PI*2);ctx.stroke();
-  }
-  for(const m of motes){
-    m.x+=m.vx*dt*60;m.y+=m.vy*dt*60;m.life-=dt*.45;
-    ctx.globalAlpha=Math.max(0,m.life)*.8;ctx.shadowBlur=10;ctx.shadowColor='rgba(210,190,255,.95)';
-    ctx.fillStyle='rgba(245,235,255,.95)';ctx.beginPath();ctx.arc(m.x,m.y,m.size,0,Math.PI*2);ctx.fill();
-  }
-  ctx.restore();
-  stars=stars.filter(o=>o.life>0);bubbles=bubbles.filter(o=>o.life>0);motes=motes.filter(o=>o.life>0);
-  if(stars.length>120)stars.splice(0,stars.length-120);
-  if(bubbles.length>80)bubbles.splice(0,bubbles.length-80);
-  if(motes.length>120)motes.splice(0,motes.length-120);
-}
-
-let prev=performance.now();
-function loop(now){
-  const dt=Math.min(.05,(now-prev)/1000);prev=now;
-  ctx.clearRect(0,0,vw,vh);
-
-  if(cameraReady&&!sequence&&now-lastDetect>140){
-    lastDetect=now;const f=detect();
-    if(f){
-      origin.x=lerp(origin.x,f.x,.28);origin.y=lerp(origin.y,f.y,.28);origin.size=lerp(origin.size,f.size,.22);
-      detectStable++;reticle.style.display='block';reticle.style.left=origin.x*vw+'px';reticle.style.top=origin.y*vh+'px';
-      statusEl.textContent='クラゲ認識中… '+Math.min(100,Math.round(detectStable/8*100))+'%';
-      if(detectStable>=8){reticle.style.display='none';startSequence();}
-    }else{detectStable=Math.max(0,detectStable-1);reticle.style.display='none';}
-  }
-
-  if(sequence){
-    const elapsed=now-seqStart,st=state(elapsed),x=st.p.x*vw,y=st.p.y*vh,r=st.scale*Math.min(vw,vh)*.34;
-
-    // dreamy trail
-    if(st.trail>.15){
-      for(let k=4;k>=1;k--){
-        const ps=state(Math.max(0,elapsed-k*80)),pr=ps.scale*Math.min(vw,vh)*.34;
-        drawDreamyJelly(ps.p.x*vw,ps.p.y*vh,pr,st.alpha*.045*k,elapsed/1000-k*.08,st.glow*.55,ps.spin);
-      }
-    }
-
-    drawDreamyJelly(x,y,r,st.alpha,elapsed/1000,st.glow,st.spin);
-    spawnFX(x,y,r,st);
-    drawFX(dt);
-
-    if(elapsed>=10000){
-      sequence=false;stars=[];bubbles=[];motes=[];detectStable=0;
-      statusEl.textContent='模型に戻りました';
-      hint.classList.remove('hidden');
-      setTimeout(()=>{if(!sequence)statusEl.textContent='クラゲを探しています…';},1200);
-    }
-  }else drawFX(dt);
-
-  if(running||sequence)requestAnimationFrame(loop);
-}
-})();
-</script>
+  <script type="module" src="./src/main.js"></script>
 </body>
 </html>
