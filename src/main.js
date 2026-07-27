@@ -1,8 +1,8 @@
-import { AREngine } from './ar-engine.js?v=20260726-game2';
-import { TrackingEngine } from './tracking-engine.js?v=20260726-game2';
-import { EffectController } from './effect-controller.js?v=20260726-game2';
-import { PhotoController } from './photo-controller.js?v=20260726-game2';
-import { CREATURES, qualityProfile } from './creature-config.js?v=20260726-game2';
+import { AREngine } from './ar-engine.js?v=20260727-games';
+import { TrackingEngine } from './tracking-engine.js?v=20260727-games';
+import { EffectController } from './effect-controller.js?v=20260727-games';
+import { PhotoController } from './photo-controller.js?v=20260727-games';
+import { CREATURES, qualityProfile } from './creature-config.js?v=20260727-games';
 
 const stage = document.querySelector('#stage');
 const effectsCanvas = document.querySelector('#effects');
@@ -21,14 +21,19 @@ const profile = qualityProfile();
 const effects = new EffectController(effectsCanvas, profile);
 let engine = null;
 let trackingMode = false;
+let starting = false;
 
 effects.setGameCallbacks({
-  onStateChange({ phase, collected, total }) {
-    photoButton.classList.toggle('is-fever', phase === 'fever' || phase === 'complete');
-    if (phase === 'orbit') status.textContent = 'クラゲが模型のまわりを一周しています';
-    if (phase === 'bubbles') status.textContent = `泡をタッチして星を救出しよう　${collected}/${total}`;
-    if (phase === 'fever') status.textContent = 'レインボーフィーバー！ 星を全部救出できたよ';
-    if (phase === 'complete') status.textContent = 'クリア！ クラゲと一緒に写真を撮ろう';
+  onStateChange({ key, phase, count, total }) {
+    const config = CREATURES[key];
+    if (phase === 'intro' && config) status.textContent = `ドリーミー${config.label}が現れた！`;
+    if (phase === 'jelly-rhythm') status.textContent = `光る泡をタッチ！　${count}/${total}`;
+    if (phase === 'jellyfish-celebrate') status.textContent = 'レインボーフィーバー！';
+    if (phase === 'whale-charge') status.textContent = `長押しで潮吹きスター！　${count}/${total}`;
+    if (phase === 'whale-celebrate') status.textContent = '星が空まで届いたよ！';
+    if (phase === 'turtle-trace') status.textContent = `甲羅の光をなぞろう！　${count}/${total}`;
+    if (phase === 'turtle-celebrate') status.textContent = '甲羅がキラキラになったよ！';
+    if (phase === 'complete') status.textContent = 'クリア！';
   }
 });
 
@@ -45,13 +50,15 @@ const photoController = new PhotoController({
   toast: document.querySelector('#toast')
 });
 
-startButton.addEventListener('click', () => startExperience({ tracking: true }));
+startButton.addEventListener('click', () => startExperience({ tracking: true, auto: false }));
 demoButton.addEventListener('click', () => {
   const key = demoCreature.value;
   startExperience({ tracking: false, config: CREATURES[key] });
 });
 
-async function startExperience({ tracking, config }) {
+async function startExperience({ tracking, config, auto = false }) {
+  if (starting) return;
+  starting = true;
   trackingMode = tracking;
   startButton.disabled = true;
   demoButton.disabled = true;
@@ -89,7 +96,7 @@ async function startExperience({ tracking, config }) {
       photoController.setEnabled(true);
       if (result.renderMode === 'sprite2d') {
         effects.restartGame(config.key);
-        status.textContent = 'クラゲが模型のまわりを一周しています';
+        status.textContent = `ドリーミー${config.label}が現れた！`;
       } else {
         status.textContent = result.usedPlaceholder
           ? `仮の${config.label}モデルを表示中`
@@ -102,11 +109,15 @@ async function startExperience({ tracking, config }) {
     engine = null;
     stage.replaceChildren();
     effects.reset();
-    status.textContent = `開始できませんでした：${friendlyError(error)}`;
+    status.textContent = auto
+      ? '自動でカメラを起動できませんでした。下のボタンをタップしてください'
+      : `開始できませんでした：${friendlyError(error)}`;
     startButton.disabled = false;
     demoButton.disabled = false;
     demoCreature.disabled = false;
-    startButton.textContent = 'もう一度ためす';
+    startButton.textContent = 'タップしてカメラを起動';
+  } finally {
+    starting = false;
   }
 }
 
@@ -117,14 +128,11 @@ function handleTargetFound(key, config, detail = {}) {
     : `${config.icon} ${config.label}を認識`;
   activeCreature.hidden = false;
   photoController.setEnabled(true);
-  status.textContent = key === 'jellyfish'
-    ? 'クラゲが模型のまわりを一周しています'
-    : `${config.label}が現れました。スマホをゆっくり動かしてみよう`;
+  status.textContent = `ドリーミー${config.label}が現れた！`;
 }
 
 function handleTargetLost(key, config) {
   if (!trackingMode) return;
-  photoButton.classList.remove('is-fever');
   activeCreature.hidden = true;
   trackingGuide.hidden = false;
   photoController.setEnabled(false);
@@ -138,11 +146,18 @@ function leaveWelcome() {
 
 resetButton.addEventListener('click', () => {
   engine?.reset?.();
-  if (effects.activeKey === 'jellyfish') effects.restartGame('jellyfish');
+  if (effects.activeKey) effects.restartGame(effects.activeKey);
   else status.textContent = '泳ぎを最初の状態へ戻しました';
 });
 
 addEventListener('pagehide', () => engine?.stop?.());
+
+const pageOptions = new URLSearchParams(location.search);
+if (pageOptions.get('demo') !== '1') {
+  setTimeout(() => startExperience({ tracking: true, auto: true }), 80);
+} else {
+  status.textContent = '\u30ab\u30e1\u30e9\u306a\u3057\u78ba\u8a8d\u304b\u3089\u751f\u7269\u3092\u9078\u3079\u307e\u3059';
+}
 
 function friendlyError(error) {
   if (error?.name === 'NotAllowedError') return 'カメラの許可が必要です';

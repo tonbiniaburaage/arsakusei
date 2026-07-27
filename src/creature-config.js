@@ -30,12 +30,13 @@ export const CREATURES = {
     targetIndex: 1,
     label: 'クジラ',
     icon: '≈',
-    modelUrl: './assets/models/whale.glb',
-    scale: 1.34,
-    animationSpeed: 0.45,
-    effect: { colors: ['#d8f8ff', '#8eeaff', '#85a9ff'], starRatio: 0.18 },
+    renderMode: 'sprite2d',
+    spriteUrl: './assets/sprites/dreamy-whale-source.png',
+    scale: 1.04,
+    animationSpeed: 0.7,
+    effect: { colors: ['#e8fbff', '#67e6ff', '#5b9dff', '#ffe98a'], starRatio: 0.3 },
     population: [
-      { type: 'whale', size: 1.65, base: [0, 0.18, -0.45], range: [1.08, 0.24, 0.62], speed: 0.3, phase: 0.4, photo: [0, 0.38, -0.15] }
+      { type: 'whale2d', size: 1.45, base: [0.05, 0.22, -0.08], range: [0.16, 0.1, 0.04], speed: 0.5, phase: 0.4, photo: [0.08, 0.28, -0.08] }
     ],
     colors: { body: 0x719cd1, glow: 0x8ddfff, accent: 0xf0fbff }
   },
@@ -44,12 +45,13 @@ export const CREATURES = {
     targetIndex: 2,
     label: 'ウミガメ',
     icon: '⬡',
-    modelUrl: './assets/models/turtle.glb',
-    scale: 0.96,
-    animationSpeed: 0.32,
-    effect: { colors: ['#c9ffe9', '#79e8d0', '#ffe3a1'], starRatio: 0.22 },
+    renderMode: 'sprite2d',
+    spriteUrl: './assets/sprites/dreamy-turtle-source.png',
+    scale: 1.02,
+    animationSpeed: 0.58,
+    effect: { colors: ['#d8fff3', '#70efd7', '#fff09f', '#ffb9dc'], starRatio: 0.42 },
     population: [
-      { type: 'turtle', size: 1.12, base: [-0.08, 0.26, -0.18], range: [0.86, 0.2, 0.44], speed: 0.25, phase: 1.2, photo: [0.48, 0.3, -0.08] }
+      { type: 'turtle2d', size: 1.48, base: [0.04, 0.22, -0.08], range: [0.14, 0.09, 0.035], speed: 0.44, phase: 1.2, photo: [0.05, 0.28, -0.08] }
     ],
     colors: { body: 0x70bca7, glow: 0x8fffdc, accent: 0xffdf91 }
   }

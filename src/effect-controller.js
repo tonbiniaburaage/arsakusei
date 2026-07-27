@@ -1,4 +1,11 @@
 import * as THREE from 'three';
+import { SoundController } from './sound-controller.js?v=20260727-games';
+
+const GAME_TOTALS = {
+  jellyfish: 5,
+  whale: 3,
+  turtle: 5
+};
 
 export class EffectController {
   constructor(canvas, profile) {
@@ -16,7 +23,8 @@ export class EffectController {
     this.gameConfig = null;
     this.gameLayer = document.querySelector('#game-controls');
     this.gameCallbacks = {};
-    this.game = this.createGameState();
+    this.sound = new SoundController();
+    this.game = this.createGameState(null);
     this.tempWorld = new THREE.Vector3();
     this.tempScale = new THREE.Vector3();
     this.tempCamera = new THREE.Vector3();
@@ -24,6 +32,9 @@ export class EffectController {
     this.handlePointer = this.handlePointer.bind(this);
     addEventListener('resize', this.resize);
     this.canvas.addEventListener('pointerdown', this.handlePointer);
+    this.canvas.addEventListener('pointermove', this.handlePointer);
+    this.canvas.addEventListener('pointerup', this.handlePointer);
+    this.canvas.addEventListener('pointercancel', this.handlePointer);
     this.resize();
   }
 
@@ -33,9 +44,7 @@ export class EffectController {
   }
 
   setActive(key) {
-    if (this.activeKey !== key) {
-      this.restartGame(key);
-    }
+    if (this.activeKey !== key) this.restartGame(key);
     this.activeKey = key;
   }
 
@@ -43,29 +52,40 @@ export class EffectController {
     this.gameCallbacks = callbacks || {};
   }
 
-  createGameState() {
+  createGameState(key) {
     return {
-      phase: 'orbit',
-      collected: 0,
-      bubbles: [],
+      key,
+      phase: key ? 'intro' : 'idle',
+      count: 0,
+      total: GAME_TOTALS[key] || 0,
+      bubble: null,
       rescuedStars: [],
-      feverTime: 0
+      celebrateTime: 0,
+      charging: false,
+      charge: 0,
+      launches: [],
+      traceIndex: 0,
+      tracePoints: [],
+      traceTrail: [],
+      tracing: false,
+      moved: false
     };
   }
 
   restartGame(key = this.activeKey) {
     this.activeElapsed = 0;
-    this.game = this.createGameState();
+    this.game = this.createGameState(key);
     this.canvas.classList.remove('is-interactive');
     this.clearGameControls();
-    if (key === 'jellyfish') this.notifyGame('orbit');
+    if (key) this.notifyGame('intro');
   }
 
   notifyGame(phase = this.game.phase) {
     this.gameCallbacks.onStateChange?.({
+      key: this.game.key,
       phase,
-      collected: this.game.collected,
-      total: 5
+      count: this.game.count,
+      total: this.game.total
     });
   }
 
@@ -80,7 +100,7 @@ export class EffectController {
     this.activeElapsed = 0;
     this.gameAnchor = null;
     this.gameConfig = null;
-    this.game = this.createGameState();
+    this.game = this.createGameState(null);
     this.canvas.classList.remove('is-interactive');
     this.clearGameControls();
     this.clear();
@@ -108,29 +128,17 @@ export class EffectController {
     const candidates = this.controllers.filter(({ key }) => !this.activeKey || key === this.activeKey);
     for (const { key, controller } of candidates) {
       const config = controller.config;
-      const sources = controller.getEffectSources();
-      sources.forEach((source, sourceIndex) => {
+      controller.getEffectSources().forEach((source, sourceIndex) => {
         if (!this.isVisible(source)) return;
         const screen = this.project(source);
-        if (!screen || screen.x < -40 || screen.x > this.width + 40 || screen.y < -40 || screen.y > this.height + 40) return;
-
-        if (config.renderMode === 'sprite2d') {
-          if (!this.gameAnchor) {
-            this.gameAnchor = screen;
-            this.gameConfig = config;
-          }
-          this.drawDreamAura(screen, sourceIndex, config);
-          const chance = delta * 34 * this.profile.spawnRate * (this.photoMode ? 2.7 : 1);
-          if (Math.random() < chance) {
-            const burst = this.photoMode ? 3 : 2;
-            for (let index = 0; index < burst; index += 1) {
-              this.spawn(screen, config, key, Math.max(34, screen.size * 0.58), true);
-            }
-          }
-        } else {
-          const chance = delta * 13 * this.profile.spawnRate * (this.photoMode ? 2.5 : 1);
-          if (Math.random() < chance) this.spawn(screen, config, key);
+        if (!screen || screen.x < -70 || screen.x > this.width + 70 || screen.y < -70 || screen.y > this.height + 70) return;
+        if (!this.gameAnchor) {
+          this.gameAnchor = screen;
+          this.gameConfig = config;
         }
+        this.drawCreatureAura(screen, sourceIndex, config, key);
+        const chance = delta * (this.photoMode ? 38 : 18) * this.profile.spawnRate;
+        if (Math.random() < chance) this.spawnAmbient(screen, config, key);
       });
     }
 
@@ -144,262 +152,720 @@ export class EffectController {
   }
 
   updateGame(delta) {
-    if (this.activeKey !== 'jellyfish' || !this.gameAnchor || !this.gameConfig) return;
+    if (!this.activeKey || !this.gameAnchor || !this.gameConfig) return;
+    if (this.game.key !== this.activeKey) this.restartGame(this.activeKey);
 
-    if (this.game.phase === 'orbit' && this.activeElapsed >= 4.85) {
-      this.game.phase = 'bubbles';
-      this.game.bubbles = [
-        { angle: -0.2, distance: 0.86, speed: 0.36, popped: false },
-        { angle: 0.95, distance: 1.02, speed: -0.29, popped: false },
-        { angle: 2.15, distance: 0.9, speed: 0.31, popped: false },
-        { angle: 3.35, distance: 1.08, speed: -0.33, popped: false },
-        { angle: 4.65, distance: 0.94, speed: 0.27, popped: false }
-      ];
-      this.canvas.classList.add('is-interactive');
-      this.createGameControls();
-      this.notifyGame('bubbles');
+    if (this.game.phase === 'intro') {
+      const introDuration = this.activeKey === 'jellyfish' ? 3.7 : 1.8;
+      if (this.activeElapsed >= introDuration) {
+        if (this.activeKey === 'jellyfish') this.beginJellyfishGame();
+        if (this.activeKey === 'whale') this.beginWhaleGame();
+        if (this.activeKey === 'turtle') this.beginTurtleGame();
+      }
     }
 
-    const orbitRadius = Math.max(72, this.gameAnchor.size * 0.72);
-    for (const bubble of this.game.bubbles) {
-      if (bubble.popped) continue;
-      bubble.angle += bubble.speed * delta;
-      bubble.x = this.gameAnchor.x + Math.cos(bubble.angle) * orbitRadius * bubble.distance;
-      bubble.y = this.gameAnchor.y + Math.sin(bubble.angle) * orbitRadius * bubble.distance * 0.68;
-      bubble.radius = Math.max(24, Math.min(42, this.gameAnchor.size * 0.16));
-      const safeMargin = bubble.radius + 8;
-      bubble.x = Math.max(safeMargin, Math.min(this.width - safeMargin, bubble.x));
-      bubble.y = Math.max(safeMargin + 92, Math.min(this.height - safeMargin - 94, bubble.y));
-      this.positionGameControl(bubble);
-    }
+    if (this.game.phase === 'jelly-rhythm') this.updateJellyfishGame();
+    if (this.game.phase === 'whale-charge') this.updateWhaleGame(delta);
+    if (this.game.phase === 'turtle-trace') this.updateTurtleGame();
 
-    for (const star of this.game.rescuedStars) {
-      star.progress = Math.min(1, star.progress + delta * 1.7);
-    }
+    for (const star of this.game.rescuedStars) star.progress = Math.min(1, star.progress + delta * 1.8);
     this.game.rescuedStars = this.game.rescuedStars.filter((star) => star.progress < 1);
+    for (const launch of this.game.launches) launch.progress = Math.min(1, launch.progress + delta * (0.72 + launch.power * 0.5));
+    this.game.launches = this.game.launches.filter((launch) => launch.progress < 1);
 
-    if (this.game.phase === 'fever') {
-      this.game.feverTime += delta;
-      const chance = delta * 58 * this.profile.spawnRate;
-      if (Math.random() < chance) {
-        for (let index = 0; index < 4; index += 1) {
-          this.spawn(this.gameAnchor, this.gameConfig, 'jellyfish', this.gameAnchor.size * 0.9, true);
+    if (this.game.phase.endsWith('celebrate')) {
+      this.game.celebrateTime += delta;
+      if (Math.random() < delta * 58 * this.profile.spawnRate) {
+        for (let index = 0; index < 3; index += 1) {
+          this.spawnAmbient(this.gameAnchor, this.gameConfig, this.activeKey, true);
         }
       }
-      if (this.game.feverTime >= 4.2) {
+      if (this.game.celebrateTime >= 2.8) {
         this.game.phase = 'complete';
         this.notifyGame('complete');
       }
     }
   }
 
-  handlePointer(event) {
-    if (this.game.phase !== 'bubbles') return;
-    const rect = this.canvas.getBoundingClientRect();
-    const x = (event.clientX - rect.left) * this.width / rect.width;
-    const y = (event.clientY - rect.top) * this.height / rect.height;
-    const bubble = this.game.bubbles.find((candidate) => {
-      if (candidate.popped || !candidate.radius) return false;
-      return Math.hypot(x - candidate.x, y - candidate.y) <= candidate.radius * 2.1;
-    });
-    if (!bubble) return;
-
-    event.preventDefault();
-    this.popBubble(bubble);
+  beginJellyfishGame() {
+    this.game.phase = 'jelly-rhythm';
+    this.canvas.classList.add('is-interactive');
+    this.createJellyBubble();
+    this.notifyGame();
   }
 
-  popBubble(bubble) {
-    if (!bubble || bubble.popped || this.game.phase !== 'bubbles') return;
-    bubble.popped = true;
-    bubble.button?.remove();
-    this.game.collected += 1;
+  createJellyBubble() {
+    const placements = [
+      [-0.72, -0.34],
+      [0.68, -0.42],
+      [-0.68, 0.26],
+      [0.7, 0.25],
+      [0.02, 0.58]
+    ];
+    const [offsetX, offsetY] = placements[this.game.count];
+    this.game.bubble = { offsetX, offsetY, radius: 34, pulse: 0 };
+    this.createGameButton({
+      label: `光る泡${this.game.count + 1}を割る`,
+      className: 'game-bubble-target',
+      onClick: () => this.popJellyBubble()
+    });
+  }
+
+  updateJellyfishGame() {
+    const bubble = this.game.bubble;
+    if (!bubble) return;
+    const radius = Math.max(88, this.gameAnchor.size * 0.74);
+    bubble.pulse += 0.08;
+    bubble.radius = Math.max(28, Math.min(42, this.gameAnchor.size * 0.17));
+    bubble.x = this.gameAnchor.x + bubble.offsetX * radius;
+    bubble.y = this.gameAnchor.y + bubble.offsetY * radius;
+    const margin = bubble.radius + 10;
+    bubble.x = Math.max(margin, Math.min(this.width - margin, bubble.x));
+    bubble.y = Math.max(margin + 96, Math.min(this.height - margin - 92, bubble.y));
+    this.positionControl(this.game.control, bubble.x, bubble.y, bubble.radius * 4.4, bubble.radius * 4.4);
+  }
+
+  popJellyBubble() {
+    const bubble = this.game.bubble;
+    if (!bubble || this.game.phase !== 'jelly-rhythm') return;
+    this.sound.pop(this.game.count);
+    navigator.vibrate?.(18);
+    this.game.count += 1;
     this.game.rescuedStars.push({
       x: bubble.x,
       y: bubble.y,
       progress: 0,
       rotation: Math.random() * Math.PI * 2
     });
-    this.spawnPopBurst(bubble.x, bubble.y);
+    this.spawnBurst(bubble.x, bubble.y, 'jellyfish');
+    this.clearGameControls();
+    this.game.bubble = null;
 
-    if (this.game.collected >= 5) {
-      this.game.phase = 'fever';
-      this.game.feverTime = 0;
-      this.canvas.classList.remove('is-interactive');
-      this.clearGameControls();
-      this.notifyGame('fever');
+    if (this.game.count >= this.game.total) {
+      this.startCelebrate('jellyfish');
     } else {
-      this.notifyGame('bubbles');
+      this.createJellyBubble();
+      this.notifyGame();
     }
   }
 
-  createGameControls() {
-    this.clearGameControls();
-    if (!this.gameLayer) return;
-    this.game.bubbles.forEach((bubble, index) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'game-bubble-target';
-      button.setAttribute('aria-label', `泡${index + 1}を割って星を救出`);
-      button.addEventListener('click', (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        this.popBubble(bubble);
-      });
-      bubble.button = button;
-      this.gameLayer.appendChild(button);
+  beginWhaleGame() {
+    this.game.phase = 'whale-charge';
+    this.createWhaleControl();
+    this.notifyGame();
+  }
+
+  createWhaleControl() {
+    const button = this.createGameButton({
+      label: '長押しして潮吹きパワーをためる',
+      className: 'game-action-target game-action-target--whale'
+    });
+    button.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      button.setPointerCapture?.(event.pointerId);
+      this.sound.ensureContext();
+      this.game.charging = true;
+      this.game.charge = Math.max(0.12, this.game.charge);
+      this.game.moved = false;
+    });
+    const release = (event) => {
+      if (!this.game.charging) return;
+      event.preventDefault();
+      this.game.charging = false;
+      this.game.moved = true;
+      this.launchWhaleStar(Math.max(0.48, this.game.charge));
+      this.game.charge = 0;
+    };
+    button.addEventListener('pointerup', release);
+    button.addEventListener('pointercancel', release);
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      if (this.game.moved) {
+        this.game.moved = false;
+        return;
+      }
+      this.launchWhaleStar(0.62);
     });
   }
 
-  positionGameControl(bubble) {
-    if (!bubble.button) return;
-    const diameter = bubble.radius * 4.2;
-    bubble.button.style.width = `${diameter}px`;
-    bubble.button.style.height = `${diameter}px`;
-    bubble.button.style.transform = `translate3d(${bubble.x - diameter / 2}px, ${bubble.y - diameter / 2}px, 0)`;
+  updateWhaleGame(delta) {
+    if (this.game.charging) this.game.charge = Math.min(1, this.game.charge + delta * 0.92);
+    this.positionControl(
+      this.game.control,
+      this.gameAnchor.x,
+      this.gameAnchor.y + this.gameAnchor.size * 0.08,
+      Math.max(180, this.gameAnchor.size * 1.4),
+      Math.max(120, this.gameAnchor.size * 0.72)
+    );
+  }
+
+  launchWhaleStar(power) {
+    if (this.game.phase !== 'whale-charge') return;
+    this.sound.splash(power);
+    navigator.vibrate?.(28);
+    this.game.count += 1;
+    this.game.launches.push({
+      x: this.gameAnchor.x,
+      y: this.gameAnchor.y - this.gameAnchor.size * 0.38,
+      power,
+      progress: 0,
+      drift: (Math.random() - 0.5) * 90
+    });
+    this.spawnBurst(this.gameAnchor.x, this.gameAnchor.y - this.gameAnchor.size * 0.35, 'whale');
+    if (this.game.count >= this.game.total) this.startCelebrate('whale');
+    else this.notifyGame();
+  }
+
+  beginTurtleGame() {
+    this.game.phase = 'turtle-trace';
+    this.canvas.classList.add('is-interactive');
+    this.createTurtleControl();
+    this.notifyGame();
+  }
+
+  createTurtleControl() {
+    const button = this.createGameButton({
+      label: 'カメの甲羅をなぞる',
+      className: 'game-action-target game-action-target--turtle'
+    });
+    button.addEventListener('pointerdown', (event) => {
+      this.game.tracing = true;
+      this.game.moved = false;
+      this.sound.ensureContext();
+      this.processTurtleTrace(event);
+    });
+    button.addEventListener('pointermove', (event) => {
+      if (!this.game.tracing) return;
+      this.game.moved = true;
+      this.processTurtleTrace(event);
+    });
+    const finish = () => {
+      this.game.tracing = false;
+    };
+    button.addEventListener('pointerup', finish);
+    button.addEventListener('pointercancel', finish);
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      if (this.game.moved) {
+        this.game.moved = false;
+        return;
+      }
+      this.advanceTurtleTrace();
+    });
+  }
+
+  updateTurtleGame() {
+    const size = Math.max(110, this.gameAnchor.size);
+    const offsets = [
+      [-0.42, 0.02],
+      [-0.2, -0.22],
+      [0.08, -0.28],
+      [0.34, -0.12],
+      [0.42, 0.14]
+    ];
+    this.game.tracePoints = offsets.map(([x, y]) => ({
+      x: this.gameAnchor.x + x * size,
+      y: this.gameAnchor.y + y * size
+    }));
+    this.positionControl(
+      this.game.control,
+      this.gameAnchor.x,
+      this.gameAnchor.y,
+      Math.max(210, size * 1.4),
+      Math.max(130, size * 0.78)
+    );
+  }
+
+  processTurtleTrace(event) {
+    if (this.game.phase !== 'turtle-trace') return;
+    const rect = this.canvas.getBoundingClientRect();
+    const x = (event.clientX - rect.left) * this.width / rect.width;
+    const y = (event.clientY - rect.top) * this.height / rect.height;
+    this.game.traceTrail.push({ x, y, life: 1 });
+    const point = this.game.tracePoints[this.game.traceIndex];
+    const tolerance = Math.max(52, this.gameAnchor.size * 0.28);
+    if (point && Math.hypot(x - point.x, y - point.y) <= tolerance) this.advanceTurtleTrace();
+  }
+
+  advanceTurtleTrace() {
+    if (this.game.phase !== 'turtle-trace') return;
+    const point = this.game.tracePoints[this.game.traceIndex] || this.gameAnchor;
+    this.sound.trace(this.game.traceIndex);
+    navigator.vibrate?.(12);
+    this.spawnBurst(point.x, point.y, 'turtle');
+    this.game.traceIndex += 1;
+    this.game.count = this.game.traceIndex;
+    if (this.game.traceIndex >= this.game.total) this.startCelebrate('turtle');
+    else this.notifyGame();
+  }
+
+  startCelebrate(key) {
+    this.game.phase = `${key}-celebrate`;
+    this.game.celebrateTime = 0;
+    this.game.charging = false;
+    this.canvas.classList.remove('is-interactive');
+    this.clearGameControls();
+    this.sound.success(key);
+    navigator.vibrate?.([30, 35, 55]);
+    this.notifyGame();
+  }
+
+  handlePointer(event) {
+    if (this.game.phase === 'jelly-rhythm' && event.type === 'pointerdown') {
+      const point = this.eventPoint(event);
+      const bubble = this.game.bubble;
+      if (bubble && Math.hypot(point.x - bubble.x, point.y - bubble.y) <= bubble.radius * 2.2) {
+        event.preventDefault();
+        this.popJellyBubble();
+      }
+    }
+    if (this.game.phase === 'turtle-trace') {
+      if (event.type === 'pointerdown') this.game.tracing = true;
+      if (event.type === 'pointermove' && this.game.tracing) this.processTurtleTrace(event);
+      if (event.type === 'pointerup' || event.type === 'pointercancel') this.game.tracing = false;
+    }
+  }
+
+  eventPoint(event) {
+    const rect = this.canvas.getBoundingClientRect();
+    return {
+      x: (event.clientX - rect.left) * this.width / rect.width,
+      y: (event.clientY - rect.top) * this.height / rect.height
+    };
+  }
+
+  createGameButton({ label, className, onClick }) {
+    this.clearGameControls();
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = className;
+    button.setAttribute('aria-label', label);
+    if (onClick) {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onClick();
+      });
+    }
+    this.game.control = button;
+    this.gameLayer?.appendChild(button);
+    return button;
+  }
+
+  positionControl(control, x, y, width, height) {
+    if (!control) return;
+    control.style.width = `${width}px`;
+    control.style.height = `${height}px`;
+    control.style.transform = `translate3d(${x - width / 2}px, ${y - height / 2}px, 0)`;
   }
 
   clearGameControls() {
     this.gameLayer?.replaceChildren();
+    if (this.game) this.game.control = null;
   }
 
-  spawnPopBurst(x, y) {
-    const colors = this.gameConfig?.effect.colors || ['#ffd1f1', '#cdb9ff', '#a9ebff'];
-    for (let index = 0; index < 15; index += 1) {
-      const angle = Math.PI * 2 * index / 15 + Math.random() * 0.2;
-      const speed = 22 + Math.random() * 34;
+  drawGameOverlay() {
+    if (!this.activeKey || !this.gameAnchor) return;
+    if (this.game.phase === 'intro') {
+      this.drawGameLabel(`ドリーミー${this.gameConfig.label}が現れた！`, this.gameConfig.icon);
+    }
+    if (this.game.phase === 'jelly-rhythm') {
+      if (this.game.bubble) this.drawGameBubble(this.game.bubble);
+      this.drawGameLabel(`光る泡をタッチ！ ${this.game.count}/${this.game.total}`, '○');
+    }
+    if (this.game.phase === 'whale-charge') {
+      this.drawWhaleCharge();
+      this.drawGameLabel(`長押しで潮吹き！ ${this.game.count}/${this.game.total}`, '≈');
+    }
+    if (this.game.phase === 'turtle-trace') {
+      this.drawTurtleTrace();
+      this.drawGameLabel(`甲羅の光をなぞろう！ ${this.game.count}/${this.game.total}`, '◇');
+    }
+
+    this.drawRescuedStars();
+    this.drawWhaleLaunches();
+    if (this.game.phase.endsWith('celebrate')) this.drawCelebration();
+    if (this.game.phase === 'complete') this.drawGameLabel('クリア！', '★');
+  }
+
+  drawGameBubble(bubble) {
+    const ctx = this.ctx;
+    const pulse = 1 + Math.sin(this.elapsed * 5.2) * 0.09;
+    const radius = bubble.radius * pulse;
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.shadowBlur = 22;
+    ctx.shadowColor = '#c7b4ff';
+    const gradient = ctx.createRadialGradient(
+      bubble.x - radius * 0.3,
+      bubble.y - radius * 0.34,
+      radius * 0.08,
+      bubble.x,
+      bubble.y,
+      radius
+    );
+    gradient.addColorStop(0, 'rgba(255,255,255,.94)');
+    gradient.addColorStop(0.26, 'rgba(190,235,255,.38)');
+    gradient.addColorStop(0.72, 'rgba(196,150,255,.18)');
+    gradient.addColorStop(1, 'rgba(255,174,230,.6)');
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(bubble.x, bubble.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(255,255,255,.88)';
+    ctx.stroke();
+    ctx.globalAlpha = 0.65;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(bubble.x, bubble.y, radius * (1.28 + Math.sin(this.elapsed * 5.2) * 0.08), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#fff2a8';
+    this.starPath(ctx, radius * 0.35, bubble.x, bubble.y, this.elapsed);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  drawRescuedStars() {
+    const ctx = this.ctx;
+    for (const star of this.game.rescuedStars) {
+      const progress = 1 - Math.pow(1 - star.progress, 3);
+      const x = star.x + (this.gameAnchor.x - star.x) * progress;
+      const y = star.y + (this.gameAnchor.y - star.y) * progress - Math.sin(progress * Math.PI) * 45;
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.fillStyle = '#fff1a8';
+      ctx.shadowBlur = 22;
+      ctx.shadowColor = '#ffb7ed';
+      this.starPath(ctx, 11 + Math.sin(progress * Math.PI) * 8, x, y, star.rotation + progress * 4);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  drawWhaleCharge() {
+    const ctx = this.ctx;
+    const x = this.gameAnchor.x;
+    const y = this.gameAnchor.y + this.gameAnchor.size * 0.54;
+    const width = Math.min(210, Math.max(130, this.gameAnchor.size));
+    ctx.save();
+    ctx.fillStyle = 'rgba(13,45,82,.7)';
+    ctx.strokeStyle = 'rgba(210,250,255,.75)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    this.roundedRect(ctx, x - width / 2, y, width, 18, 9);
+    ctx.fill();
+    ctx.stroke();
+    const fill = Math.max(0.08, this.game.charge);
+    const gradient = ctx.createLinearGradient(x - width / 2, y, x + width / 2, y);
+    gradient.addColorStop(0, '#65e7ff');
+    gradient.addColorStop(0.62, '#85b8ff');
+    gradient.addColorStop(1, '#ffe981');
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    this.roundedRect(ctx, x - width / 2 + 3, y + 3, (width - 6) * fill, 12, 6);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  drawWhaleLaunches() {
+    const ctx = this.ctx;
+    for (const launch of this.game.launches) {
+      const progress = 1 - Math.pow(1 - launch.progress, 2);
+      const x = launch.x + Math.sin(progress * Math.PI) * launch.drift;
+      const y = launch.y - progress * (180 + launch.power * 170);
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.fillStyle = '#fff09a';
+      ctx.shadowBlur = 24;
+      ctx.shadowColor = '#71dcff';
+      this.starPath(ctx, 13 + launch.power * 9, x, y, progress * 5);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(108,229,255,.7)';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(launch.x, launch.y);
+      ctx.quadraticCurveTo(launch.x + launch.drift, (launch.y + y) / 2, x, y + 18);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  drawTurtleTrace() {
+    const ctx = this.ctx;
+    const points = this.game.tracePoints;
+    if (!points.length) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.setLineDash([7, 9]);
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = 'rgba(207,255,239,.46)';
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = '#78efd7';
+    ctx.beginPath();
+    points.forEach((point, index) => index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y));
+    ctx.stroke();
+    ctx.setLineDash([]);
+    points.forEach((point, index) => {
+      const reached = index < this.game.traceIndex;
+      const active = index === this.game.traceIndex;
+      ctx.fillStyle = reached ? '#fff1a0' : active ? '#ffb9dc' : 'rgba(159,255,226,.72)';
+      ctx.shadowBlur = active ? 22 : 11;
+      this.starPath(ctx, active ? 13 : 9, point.x, point.y, this.elapsed * 0.6 + index);
+      ctx.fill();
+    });
+    ctx.strokeStyle = '#ffb9dc';
+    ctx.lineWidth = 6;
+    ctx.globalAlpha = 0.78;
+    ctx.beginPath();
+    this.game.traceTrail.slice(-28).forEach((point, index) => {
+      index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y);
+    });
+    ctx.stroke();
+    ctx.restore();
+    this.game.traceTrail = this.game.traceTrail.slice(-34);
+  }
+
+  drawCelebration() {
+    if (this.activeKey === 'jellyfish') this.drawRainbowRings();
+    if (this.activeKey === 'whale') this.drawWhaleCelebration();
+    if (this.activeKey === 'turtle') this.drawTurtleCelebration();
+    this.drawGameLabel('やったね！', '★');
+  }
+
+  drawRainbowRings() {
+    const colors = ['#ff8cda', '#ffe47a', '#8dffe2', '#8eb9ff', '#c29aff'];
+    const radius = Math.max(86, this.gameAnchor.size * (0.76 + this.game.celebrateTime * 0.08));
+    this.ctx.save();
+    this.ctx.globalCompositeOperation = 'screen';
+    colors.forEach((color, index) => {
+      this.ctx.globalAlpha = 0.52 - index * 0.055;
+      this.ctx.lineWidth = 5;
+      this.ctx.strokeStyle = color;
+      this.ctx.beginPath();
+      this.ctx.arc(this.gameAnchor.x, this.gameAnchor.y, radius * (0.58 + index * 0.13), 0, Math.PI * 2);
+      this.ctx.stroke();
+    });
+    this.ctx.restore();
+  }
+
+  drawWhaleCelebration() {
+    const ctx = this.ctx;
+    const radius = Math.max(100, this.gameAnchor.size * 0.7);
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.strokeStyle = '#70e8ff';
+    ctx.lineWidth = 5;
+    ctx.shadowBlur = 18;
+    ctx.shadowColor = '#5ca7ff';
+    for (let index = 0; index < 4; index += 1) {
+      ctx.globalAlpha = 0.62 - index * 0.11;
+      ctx.beginPath();
+      ctx.arc(this.gameAnchor.x, this.gameAnchor.y + radius * 0.35, radius * (0.55 + index * 0.26), Math.PI * 1.08, Math.PI * 1.92);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  drawTurtleCelebration() {
+    const ctx = this.ctx;
+    const radius = Math.max(88, this.gameAnchor.size * 0.58);
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.translate(this.gameAnchor.x, this.gameAnchor.y);
+    ctx.rotate(this.game.celebrateTime * 0.45);
+    ['#8ff5db', '#fff09b', '#ffb7dc'].forEach((color, index) => {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 4;
+      ctx.globalAlpha = 0.65 - index * 0.12;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, radius * (0.75 + index * 0.2), radius * (0.42 + index * 0.12), index * 0.6, 0, Math.PI * 2);
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+
+  drawCreatureAura(screen, index, config, key) {
+    if (key === 'whale') return this.drawWhaleAura(screen, config);
+    if (key === 'turtle') return this.drawTurtleAura(screen, config);
+    return this.drawJellyAura(screen, index, config);
+  }
+
+  drawJellyAura(screen, index, config) {
+    const ctx = this.ctx;
+    const radius = Math.max(48, screen.size * 0.58);
+    const time = this.elapsed + index * 1.37;
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    const aura = ctx.createRadialGradient(screen.x, screen.y, radius * 0.18, screen.x, screen.y, radius * 1.22);
+    aura.addColorStop(0, 'rgba(255,218,249,.09)');
+    aura.addColorStop(0.55, 'rgba(177,143,255,.11)');
+    aura.addColorStop(1, 'rgba(120,205,255,0)');
+    ctx.fillStyle = aura;
+    ctx.beginPath();
+    ctx.arc(screen.x, screen.y, radius * 1.22, 0, Math.PI * 2);
+    ctx.fill();
+    for (let orbit = 0; orbit < 4; orbit += 1) {
+      const angle = time * 0.38 + orbit * 1.6;
+      ctx.fillStyle = config.effect.colors[orbit % config.effect.colors.length];
+      this.starPath(ctx, 4 + orbit, screen.x + Math.cos(angle) * radius, screen.y + Math.sin(angle) * radius * 0.72, angle);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  drawWhaleAura(screen) {
+    const ctx = this.ctx;
+    const radius = Math.max(54, screen.size * 0.56);
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.strokeStyle = 'rgba(100,226,255,.3)';
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([8, 10]);
+    ctx.lineDashOffset = -this.elapsed * 24;
+    for (let index = 0; index < 3; index += 1) {
+      ctx.beginPath();
+      ctx.ellipse(screen.x, screen.y + radius * 0.42, radius * (0.65 + index * 0.18), radius * (0.2 + index * 0.06), 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  drawTurtleAura(screen) {
+    const ctx = this.ctx;
+    const radius = Math.max(54, screen.size * 0.55);
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.translate(screen.x, screen.y);
+    ctx.rotate(Math.sin(this.elapsed * 0.4) * 0.08);
+    ctx.strokeStyle = 'rgba(145,247,217,.28)';
+    ctx.lineWidth = 3;
+    for (let index = 0; index < 3; index += 1) {
+      ctx.beginPath();
+      ctx.ellipse(0, 0, radius * (0.62 + index * 0.17), radius * (0.36 + index * 0.1), index * 0.44, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  spawnAmbient(screen, config, key, celebration = false) {
+    const color = config.effect.colors[Math.floor(Math.random() * config.effect.colors.length)];
+    let type = 'star';
+    if (key === 'jellyfish') type = Math.random() < 0.48 ? 'star' : Math.random() < 0.72 ? 'bubble' : 'spark';
+    if (key === 'whale') type = Math.random() < 0.68 ? 'drop' : 'star';
+    if (key === 'turtle') type = Math.random() < 0.58 ? 'petal' : 'star';
+    const radius = Math.max(38, screen.size * (celebration ? 0.82 : 0.56));
+    this.particles.push({
+      key,
+      type,
+      color,
+      x: screen.x + (Math.random() - 0.5) * radius * 1.6,
+      y: screen.y + (Math.random() - 0.5) * radius,
+      vx: (Math.random() - 0.5) * (celebration ? 36 : 16),
+      vy: key === 'whale' ? -15 - Math.random() * 28 : -8 - Math.random() * 18,
+      rotation: Math.random() * Math.PI * 2,
+      spin: (Math.random() - 0.5) * 2.2,
+      size: 3 + Math.random() * (celebration ? 10 : 7),
+      life: 1,
+      decay: 0.42 + Math.random() * 0.34
+    });
+  }
+
+  spawnBurst(x, y, key) {
+    const config = this.gameConfig;
+    for (let index = 0; index < 16; index += 1) {
+      const angle = Math.PI * 2 * index / 16 + Math.random() * 0.18;
+      const speed = 28 + Math.random() * 42;
+      const type = key === 'whale'
+        ? index % 3 === 0 ? 'star' : 'drop'
+        : key === 'turtle'
+          ? index % 3 === 0 ? 'star' : 'petal'
+          : index % 3 === 0 ? 'star' : 'spark';
       this.particles.push({
-        key: 'jellyfish',
-        type: index % 3 === 0 ? 'star' : 'spark',
-        color: colors[index % colors.length],
+        key,
+        type,
+        color: config.effect.colors[index % config.effect.colors.length],
         x,
         y,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
         rotation: angle,
         spin: (Math.random() - 0.5) * 3,
-        size: 4 + Math.random() * 7,
+        size: 5 + Math.random() * 8,
         life: 1,
-        decay: 0.75 + Math.random() * 0.35
+        decay: 0.78 + Math.random() * 0.3
       });
     }
   }
 
-  drawGameOverlay() {
-    if (this.activeKey !== 'jellyfish' || !this.gameAnchor) return;
+  drawParticle(particle, delta) {
+    particle.x += particle.vx * delta;
+    particle.y += particle.vy * delta;
+    particle.rotation += particle.spin * delta;
+    particle.life -= particle.decay * delta;
+    const alpha = Math.max(0, particle.life);
     const ctx = this.ctx;
-
-    if (this.game.phase === 'orbit') {
-      this.drawGameLabel('クラゲが模型をぐるっと一周！', '✦');
-    }
-
-    if (this.game.phase === 'bubbles') {
-      for (const bubble of this.game.bubbles) {
-        if (!bubble.popped) this.drawGameBubble(bubble);
-      }
-      this.drawGameLabel(`泡をタッチ！  ★ ${this.game.collected}/5`, '○');
-    }
-
-    for (const star of this.game.rescuedStars) {
-      const progress = 1 - Math.pow(1 - star.progress, 3);
-      const x = star.x + (this.gameAnchor.x - star.x) * progress;
-      const y = star.y + (this.gameAnchor.y - star.y) * progress - Math.sin(progress * Math.PI) * 42;
-      ctx.save();
-      ctx.globalCompositeOperation = 'screen';
-      ctx.fillStyle = '#fff2a8';
-      ctx.shadowBlur = 20;
-      ctx.shadowColor = '#ffbcef';
-      this.starPath(ctx, 10 + Math.sin(progress * Math.PI) * 8, x, y, star.rotation + progress * 4);
-      ctx.fill();
-      ctx.restore();
-    }
-
-    if (this.game.phase === 'fever') {
-      this.drawFever();
-      this.drawGameLabel('★ レインボーフィーバー！ ★', '✦');
-    }
-    if (this.game.phase === 'complete') {
-      this.drawGameLabel('星を救出できたよ！ 写真を撮ろう', '★');
-    }
-  }
-
-  drawGameBubble(bubble) {
-    const ctx = this.ctx;
-    const pulse = 1 + Math.sin(this.elapsed * 3 + bubble.angle * 2) * 0.08;
-    const radius = bubble.radius * pulse;
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
-    ctx.shadowBlur = 18;
-    ctx.shadowColor = '#c7b4ff';
-    const gradient = ctx.createRadialGradient(
-      bubble.x - radius * 0.28,
-      bubble.y - radius * 0.32,
-      radius * 0.08,
-      bubble.x,
-      bubble.y,
-      radius
-    );
-    gradient.addColorStop(0, 'rgba(255,255,255,.88)');
-    gradient.addColorStop(0.22, 'rgba(197,235,255,.34)');
-    gradient.addColorStop(0.72, 'rgba(198,159,255,.18)');
-    gradient.addColorStop(1, 'rgba(255,188,235,.52)');
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(bubble.x, bubble.y, radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = 'rgba(255,255,255,.82)';
-    ctx.stroke();
-    ctx.fillStyle = '#fff0a8';
-    ctx.shadowBlur = 12;
-    ctx.shadowColor = '#ffb7ef';
-    this.starPath(ctx, radius * 0.36, bubble.x, bubble.y, this.elapsed * 0.7 + bubble.angle);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  drawFever() {
-    const ctx = this.ctx;
-    const time = this.game.feverTime;
-    const radius = Math.max(90, this.gameAnchor.size * (0.8 + time * 0.12));
-    const colors = ['#ff8cda', '#ffe47a', '#8dffe2', '#8eb9ff', '#c29aff'];
-    ctx.save();
-    ctx.globalCompositeOperation = 'screen';
-    ctx.translate(this.gameAnchor.x, this.gameAnchor.y);
-    ctx.rotate(time * 0.4);
-    colors.forEach((color, index) => {
-      ctx.globalAlpha = Math.max(0.15, 0.58 - index * 0.07);
-      ctx.lineWidth = Math.max(3, radius * 0.035);
-      ctx.strokeStyle = color;
-      ctx.shadowBlur = 22;
-      ctx.shadowColor = color;
+    ctx.globalAlpha = alpha * 0.82;
+    ctx.translate(particle.x, particle.y);
+    ctx.rotate(particle.rotation);
+    ctx.shadowBlur = this.photoMode ? 14 : 9;
+    ctx.shadowColor = particle.color;
+    ctx.fillStyle = particle.color;
+    ctx.strokeStyle = particle.color;
+    if (particle.type === 'bubble') {
+      ctx.lineWidth = 1.4;
       ctx.beginPath();
-      ctx.arc(0, 0, radius * (0.58 + index * 0.13), 0, Math.PI * 2);
+      ctx.arc(0, 0, particle.size, 0, Math.PI * 2);
       ctx.stroke();
-    });
+    } else if (particle.type === 'star') {
+      this.starPath(ctx, particle.size);
+      ctx.fill();
+    } else if (particle.type === 'spark') {
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(-particle.size, 0);
+      ctx.lineTo(particle.size, 0);
+      ctx.moveTo(0, -particle.size);
+      ctx.lineTo(0, particle.size);
+      ctx.stroke();
+    } else if (particle.type === 'drop') {
+      ctx.beginPath();
+      ctx.ellipse(0, 0, particle.size * 0.55, particle.size, 0, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.beginPath();
+      ctx.ellipse(0, 0, particle.size, particle.size * 0.48, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.restore();
   }
 
   drawGameLabel(text, icon) {
     const ctx = this.ctx;
-    const paddingX = 16;
-    const height = 38;
+    const height = 40;
     ctx.save();
     ctx.font = '800 13px -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif';
-    const width = Math.min(this.width - 28, ctx.measureText(text).width + paddingX * 2 + 22);
+    const width = Math.min(this.width - 28, ctx.measureText(text).width + 58);
     const x = (this.width - width) / 2;
-    const y = Math.max(92, Math.min(this.height - 150, this.gameAnchor.y - this.gameAnchor.size * 0.74 - 52));
-    ctx.fillStyle = 'rgba(24,13,54,.82)';
-    ctx.strokeStyle = 'rgba(255,255,255,.35)';
+    const y = Math.max(96, Math.min(this.height - 150, this.gameAnchor.y - this.gameAnchor.size * 0.7 - 54));
+    ctx.fillStyle = 'rgba(20,13,50,.84)';
+    ctx.strokeStyle = 'rgba(255,255,255,.38)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    this.roundedRect(ctx, x, y, width, height, 19);
+    this.roundedRect(ctx, x, y, width, height, 20);
     ctx.fill();
     ctx.stroke();
     ctx.fillStyle = '#fff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.shadowBlur = 10;
-    ctx.shadowColor = '#c7a8ff';
+    ctx.shadowColor = this.activeKey === 'whale' ? '#68dfff' : this.activeKey === 'turtle' ? '#79f1d4' : '#c7a8ff';
     ctx.fillText(`${icon} ${text}`, this.width / 2, y + height / 2 + 1);
     ctx.restore();
   }
@@ -438,134 +904,6 @@ export class EffectController {
       current = current.parent;
     }
     return true;
-  }
-
-  spawn(screen, config, key, radius = 34, dreamy = false) {
-    const typeRoll = Math.random();
-    const starRatio = config.effect.starRatio;
-    const type = dreamy && typeRoll > 0.82
-      ? 'spark'
-      : typeRoll < starRatio ? 'star' : typeRoll < 0.72 ? 'mote' : 'bubble';
-    const color = config.effect.colors[Math.floor(Math.random() * config.effect.colors.length)];
-    this.particles.push({
-      key,
-      type,
-      color,
-      x: screen.x + (Math.random() - 0.5) * radius * 1.5,
-      y: screen.y + (Math.random() - 0.5) * radius * 1.15,
-      vx: (Math.random() - 0.5) * (dreamy ? 18 : 9),
-      vy: -8 - Math.random() * (dreamy ? 22 : 13),
-      rotation: Math.random() * Math.PI * 2,
-      spin: (Math.random() - 0.5) * 1.5,
-      size: type === 'bubble' ? 3 + Math.random() * 10 : 2.5 + Math.random() * (dreamy ? 7 : 5),
-      life: 1,
-      decay: 0.38 + Math.random() * 0.34
-    });
-  }
-
-  drawDreamAura(screen, index, config) {
-    const ctx = this.ctx;
-    const radius = Math.max(44, screen.size * 0.58);
-    const time = this.elapsed + index * 1.37;
-    const pulse = 1 + Math.sin(time * 2.1) * 0.055;
-
-    ctx.save();
-    ctx.globalCompositeOperation = 'screen';
-    ctx.translate(screen.x, screen.y);
-    ctx.rotate(Math.sin(time * 0.62) * 0.08);
-
-    const aura = ctx.createRadialGradient(0, 0, radius * 0.16, 0, 0, radius * 1.18 * pulse);
-    aura.addColorStop(0, 'rgba(255,220,250,.07)');
-    aura.addColorStop(0.46, 'rgba(192,157,255,.10)');
-    aura.addColorStop(0.76, 'rgba(125,220,255,.08)');
-    aura.addColorStop(1, 'rgba(140,105,255,0)');
-    ctx.fillStyle = aura;
-    ctx.beginPath();
-    ctx.arc(0, 0, radius * 1.2 * pulse, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.lineWidth = Math.max(1, radius * 0.012);
-    ctx.setLineDash([radius * 0.09, radius * 0.12]);
-    ctx.lineDashOffset = -time * radius * 0.08;
-    ctx.strokeStyle = 'rgba(225,205,255,.20)';
-    ctx.beginPath();
-    ctx.ellipse(0, 0, radius * 0.98, radius * 0.68, time * 0.08, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    for (let orbit = 0; orbit < 4; orbit += 1) {
-      const angle = time * (0.34 + orbit * 0.035) + orbit * Math.PI * 0.53;
-      const distance = radius * (0.82 + (orbit % 2) * 0.22);
-      const x = Math.cos(angle) * distance;
-      const y = Math.sin(angle) * distance * 0.7;
-      const size = Math.max(2.5, radius * (0.035 + orbit * 0.004));
-      ctx.fillStyle = config.effect.colors[orbit % config.effect.colors.length];
-      ctx.shadowBlur = this.photoMode ? 18 : 11;
-      ctx.shadowColor = ctx.fillStyle;
-      this.starPath(ctx, size, x, y, angle);
-      ctx.fill();
-    }
-
-    ctx.globalAlpha = 0.16 + Math.sin(time * 2.3) * 0.035;
-    ctx.strokeStyle = index % 2 ? '#b7eaff' : '#f5c9ff';
-    ctx.lineWidth = Math.max(1.3, radius * 0.014);
-    for (let ribbon = -1; ribbon <= 1; ribbon += 1) {
-      const x = ribbon * radius * 0.22;
-      ctx.beginPath();
-      ctx.moveTo(x, radius * 0.32);
-      ctx.bezierCurveTo(
-        x + Math.sin(time * 1.5 + ribbon) * radius * 0.16,
-        radius * 0.72,
-        x + Math.cos(time * 1.2 + ribbon) * radius * 0.2,
-        radius * 1.05,
-        x + Math.sin(time + ribbon) * radius * 0.12,
-        radius * 1.35
-      );
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  drawParticle(particle, delta) {
-    particle.x += particle.vx * delta;
-    particle.y += particle.vy * delta;
-    particle.rotation += particle.spin * delta;
-    particle.life -= particle.decay * delta;
-    const alpha = Math.max(0, particle.life);
-    const ctx = this.ctx;
-    ctx.save();
-    ctx.globalAlpha = alpha * 0.78;
-    ctx.translate(particle.x, particle.y);
-    ctx.rotate(particle.rotation);
-    ctx.shadowBlur = this.photoMode ? 13 : 8;
-    ctx.shadowColor = particle.color;
-
-    if (particle.type === 'bubble') {
-      ctx.strokeStyle = particle.color;
-      ctx.lineWidth = 1.25;
-      ctx.beginPath();
-      ctx.arc(0, 0, particle.size, 0, Math.PI * 2);
-      ctx.stroke();
-    } else if (particle.type === 'star') {
-      ctx.fillStyle = particle.color;
-      this.starPath(ctx, particle.size);
-      ctx.fill();
-    } else if (particle.type === 'spark') {
-      ctx.strokeStyle = particle.color;
-      ctx.lineWidth = Math.max(1, particle.size * 0.22);
-      ctx.beginPath();
-      ctx.moveTo(-particle.size, 0);
-      ctx.lineTo(particle.size, 0);
-      ctx.moveTo(0, -particle.size);
-      ctx.lineTo(0, particle.size);
-      ctx.stroke();
-    } else {
-      ctx.fillStyle = particle.color;
-      ctx.beginPath();
-      ctx.arc(0, 0, particle.size * 0.52, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.restore();
   }
 
   starPath(ctx, radius, offsetX = 0, offsetY = 0, rotation = 0) {

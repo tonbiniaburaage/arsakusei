@@ -466,29 +466,28 @@ export class CreatureController {
     const [rx, ry, rz] = motion.range;
 
     if (motion.type === 'jellyfish2d') {
-      const entranceDuration = 0.65;
-      const orbitDuration = 4.2;
+      const entranceDuration = 0.48;
+      const orbitDuration = 3.15;
       if (elapsed < entranceDuration) {
         const progress = Math.min(1, elapsed / entranceDuration);
         const eased = 1 - Math.pow(1 - progress, 3);
         instance.position.set(
-          -rx * this.worldScale * (1 - eased),
-          (by - 0.12 + eased * 0.18) * this.worldScale,
+          -rx * 0.82 * this.worldScale * (1 - eased),
+          (by + 0.06) * this.worldScale,
           bz * this.worldScale
         );
         instance.userData.choreoScale = 0.35 + eased * 0.65;
         instance.userData.choreoOpacity = 0.2 + eased * 0.78;
       } else if (elapsed < entranceDuration + orbitDuration) {
         const progress = (elapsed - entranceDuration) / orbitDuration;
-        const angle = -Math.PI * 0.55 + progress * Math.PI * 2;
-        const near = (Math.sin(angle) + 1) * 0.5;
+        const angle = -Math.PI / 2 + progress * Math.PI * 2;
         instance.position.set(
           Math.cos(angle) * rx * this.worldScale,
-          (0.22 + Math.sin(angle) * ry) * this.worldScale,
-          (bz + Math.cos(angle) * rz) * this.worldScale
+          (0.24 - Math.sin(angle) * ry) * this.worldScale,
+          bz * this.worldScale
         );
-        instance.userData.choreoScale = 0.76 + near * 0.42;
-        instance.userData.choreoOpacity = 0.52 + near * 0.46;
+        instance.userData.choreoScale = 0.94 + Math.sin(progress * Math.PI) * 0.08;
+        instance.userData.choreoOpacity = 0.98;
       } else {
         const idleTime = elapsed - entranceDuration - orbitDuration;
         instance.position.set(
@@ -501,6 +500,36 @@ export class CreatureController {
       }
       instance.rotation.set(0, 0, 0);
       visual.position.y = Math.sin(elapsed * 1.1) * 0.025 * this.worldScale;
+      return;
+    }
+
+    if (motion.type === 'whale2d') {
+      const entrance = Math.min(1, elapsed / 0.72);
+      const eased = 1 - Math.pow(1 - entrance, 3);
+      instance.position.set(
+        (bx - 0.75 * (1 - eased) + Math.sin(t * 0.72) * rx) * this.worldScale,
+        (by + Math.sin(t * 1.18) * ry) * this.worldScale,
+        (bz + Math.cos(t * 0.45) * rz) * this.worldScale
+      );
+      instance.userData.choreoScale = 0.72 + eased * 0.28 + Math.sin(t * 1.4) * 0.025;
+      instance.userData.choreoOpacity = 0.25 + eased * 0.73;
+      instance.rotation.z = Math.sin(t * 0.72) * 0.045;
+      visual.position.y = Math.sin(t * 1.5) * 0.02 * this.worldScale;
+      return;
+    }
+
+    if (motion.type === 'turtle2d') {
+      const entrance = Math.min(1, elapsed / 0.78);
+      const eased = 1 - Math.pow(1 - entrance, 3);
+      instance.position.set(
+        (bx + 0.72 * (1 - eased) + Math.sin(t * 0.6) * rx) * this.worldScale,
+        (by + Math.sin(t * 1.05) * ry) * this.worldScale,
+        (bz + Math.cos(t * 0.38) * rz) * this.worldScale
+      );
+      instance.userData.choreoScale = 0.7 + eased * 0.3 + Math.sin(t * 1.2) * 0.02;
+      instance.userData.choreoOpacity = 0.22 + eased * 0.76;
+      instance.rotation.z = Math.sin(t * 0.58) * 0.035;
+      visual.position.y = Math.sin(t * 1.25) * 0.018 * this.worldScale;
       return;
     }
 

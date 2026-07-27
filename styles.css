@@ -71,6 +71,23 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   outline-offset: -3px;
 }
 
+.game-action-target {
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 46%;
+  color: transparent;
+  background: transparent;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.game-action-target:focus-visible {
+  outline: 3px solid rgba(255, 245, 170, .92);
+  outline-offset: -3px;
+}
+
 .hud {
   position: fixed;
   z-index: 5;
@@ -256,15 +273,6 @@ h1 { margin: 0; font-size: 18px; }
 
 .photo-button:active .photo-button__lens { transform: scale(.88); }
 .photo-button:disabled { opacity: .35; }
-
-.photo-button.is-fever {
-  animation: photo-ready 1s ease-in-out infinite;
-}
-
-@keyframes photo-ready {
-  0%, 100% { filter: drop-shadow(0 0 0 rgba(255, 210, 112, 0)); }
-  50% { filter: drop-shadow(0 0 18px rgba(255, 210, 112, .95)); }
-}
 
 .tracking-guide {
   position: fixed;
