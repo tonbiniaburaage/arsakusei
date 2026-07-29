@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SoundController } from './sound-controller.js?v=20260729-whitecards';
+import { SoundController } from './sound-controller.js?v=20260729-lightstamps';
 
 const GAME_TOTALS = {
   jellyfish: 5,
@@ -8,7 +8,11 @@ const GAME_TOTALS = {
 };
 
 const TURTLE_POLISH_SECONDS = 3;
-const SURPRISE_CHANCE = 0.14;
+const SURPRISE_CHANCE = 0.3;
+const LIGHT_COLLECT_SECONDS = 2.7;
+const STAMP_SECONDS = 1.15;
+const STAMP_STORAGE_KEY = 'dreamy-ocean-light-stamps';
+const STAMP_ORDER = ['jellyfish', 'whale', 'turtle'];
 
 export class EffectController {
   constructor(canvas, profile) {
@@ -30,6 +34,21 @@ export class EffectController {
     this.duckImage = new Image();
     this.duckImage.decoding = 'async';
     this.duckImage.src = './assets/sprites/mini-duck-surprise.png';
+    this.stampImages = {};
+    {
+      const stampSources = {
+        jellyfish: './assets/sprites/dreamy-jellyfish-source.png',
+        whale: './assets/sprites/dreamy-whale-source.png',
+        turtle: './assets/sprites/dreamy-turtle-source.png'
+      };
+      for (const [key, src] of Object.entries(stampSources)) {
+        const image = new Image();
+        image.decoding = 'async';
+        image.src = src;
+        this.stampImages[key] = image;
+      }
+    }
+    this.collectedStamps = this.loadCollectedStamps();
     this.forceSurprise = new URLSearchParams(location.search).get('surprise') === '1';
     this.game = this.createGameState(null);
     this.tempWorld = new THREE.Vector3();
@@ -79,9 +98,14 @@ export class EffectController {
       lastRubMove: 0,
       moved: false,
       waveTime: 0,
+      wavePulse: 0,
       bubbleHatTime: 0,
       whaleOopsTime: 0,
       dizzyTime: 0,
+      absorbTime: 0,
+      stampTime: 0,
+      allClearTime: 0,
+      newStamp: null,
       surpriseChecked: false,
       surpriseUsed: false,
       ducks: []
@@ -103,6 +127,23 @@ export class EffectController {
       count: this.game.count,
       total: this.game.total
     });
+  }
+
+  loadCollectedStamps() {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(STAMP_STORAGE_KEY) || '[]');
+      return new Set(saved.filter((key) => STAMP_ORDER.includes(key)));
+    } catch {
+      return new Set();
+    }
+  }
+
+  saveCollectedStamps() {
+    try {
+      sessionStorage.setItem(STAMP_STORAGE_KEY, JSON.stringify([...this.collectedStamps]));
+    } catch {
+      // ストレージを利用できないブラウザでも、現在の表示中はスタンプを保持する。
+    }
   }
 
   setPhotoMode(active) {
@@ -182,6 +223,11 @@ export class EffectController {
 
     if (this.game.phase === 'jelly-rhythm') this.updateJellyfishGame();
     if (this.game.phase === 'whale-charge') this.updateWhaleGame(delta);
+    if (this.game.phase === 'whale-rise') {
+      this.game.waveTime += delta;
+      this.game.wavePulse = Math.min(1, this.game.wavePulse + delta * 2.4);
+      if (this.game.waveTime >= 0.82) this.startCelebrate('whale');
+    }
     if (this.game.phase === 'turtle-polish') this.updateTurtleGame(delta);
 
     for (const star of this.game.rescuedStars) star.progress = Math.min(1, star.progress + delta * 1.8);
@@ -191,6 +237,7 @@ export class EffectController {
     this.game.bubbleHatTime = Math.max(0, this.game.bubbleHatTime - delta);
     this.game.whaleOopsTime = Math.max(0, this.game.whaleOopsTime - delta);
     this.game.dizzyTime = Math.max(0, this.game.dizzyTime - delta);
+    this.game.wavePulse = Math.min(1, this.game.wavePulse + delta * 2.1);
     this.game.ducks.forEach((duck) => {
       duck.life -= delta;
       duck.x += duck.vx * delta;
@@ -207,11 +254,53 @@ export class EffectController {
           this.spawnAmbient(this.gameAnchor, this.gameConfig, this.activeKey, true);
         }
       }
-      if (this.game.celebrateTime >= (this.activeKey === 'whale' ? 3.4 : 2.8)) {
-        this.game.phase = 'complete';
-        this.notifyGame('complete');
+      if (this.game.celebrateTime >= (this.activeKey === 'whale' ? 2.35 : 1.8)) {
+        this.beginLightCollection();
       }
     }
+
+    if (this.game.phase === 'light-collect') {
+      this.game.absorbTime += delta;
+      if (this.game.absorbTime >= LIGHT_COLLECT_SECONDS) this.awardLightStamp();
+    }
+
+    if (this.game.phase === 'stamp') {
+      this.game.stampTime += delta;
+      if (this.game.stampTime >= STAMP_SECONDS) {
+        const allCollected = STAMP_ORDER.every((key) => this.collectedStamps.has(key));
+        this.game.phase = allCollected ? 'all-complete' : 'complete';
+        this.game.allClearTime = 0;
+        if (allCollected) {
+          this.sound.finale();
+          navigator.vibrate?.([35, 35, 65, 40, 95]);
+        }
+        this.notifyGame();
+      }
+    }
+
+    if (this.game.phase === 'all-complete') {
+      this.game.allClearTime += delta;
+    }
+  }
+
+  beginLightCollection() {
+    this.game.phase = 'light-collect';
+    this.game.absorbTime = 0;
+    this.sound.collect();
+    navigator.vibrate?.(22);
+    this.notifyGame();
+  }
+
+  awardLightStamp() {
+    const key = this.activeKey;
+    this.collectedStamps.add(key);
+    this.saveCollectedStamps();
+    this.game.phase = 'stamp';
+    this.game.stampTime = 0;
+    this.game.newStamp = key;
+    this.sound.stamp();
+    navigator.vibrate?.([18, 30, 45]);
+    this.notifyGame();
   }
 
   beginJellyfishGame() {
@@ -333,6 +422,7 @@ export class EffectController {
     this.sound.splash(power);
     navigator.vibrate?.(28);
     this.game.count += 1;
+    this.game.wavePulse = 0;
     if (power < 0.55) this.game.whaleOopsTime = 1.15;
     this.game.launches.push({
       x: this.gameAnchor.x,
@@ -348,7 +438,10 @@ export class EffectController {
     this.maybeSpawnDuckSurprise(blowholeX, blowholeY);
     if (this.game.count >= this.game.total) {
       this.game.waveTime = 0;
-      this.startCelebrate('whale');
+      this.game.phase = 'whale-rise';
+      this.game.charging = false;
+      this.clearGameControls();
+      this.notifyGame();
     }
     else this.notifyGame();
   }
@@ -516,7 +609,11 @@ export class EffectController {
   }
 
   drawGameOverlay() {
-    if (!this.activeKey || !this.gameAnchor) return;
+    if (!this.activeKey) return;
+    if (!this.gameAnchor) {
+      this.drawStampBook();
+      return;
+    }
     if (this.game.phase === 'intro') {
       this.drawGameLabel(`ドリーミー${this.gameConfig.label}が現れた！`, this.gameConfig.icon);
     }
@@ -525,8 +622,13 @@ export class EffectController {
       this.drawGameLabel(`光る泡をタッチ！ ${this.game.count}/${this.game.total}`, '○');
     }
     if (this.game.phase === 'whale-charge') {
+      this.drawWhaleBuildWaves();
       this.drawWhaleCharge();
       this.drawGameLabel(`クジラを長押ししてみて！ ${this.game.count}/${this.game.total}`, '≈');
+    }
+    if (this.game.phase === 'whale-rise') {
+      this.drawWhaleBuildWaves();
+      this.drawGameLabel('チャージMAX！ 大波がくるよ！', '≈');
     }
     if (this.game.phase === 'turtle-polish') {
       this.drawTurtlePolish();
@@ -538,7 +640,20 @@ export class EffectController {
     this.drawFunnyReactions();
     this.drawDuckSurprise();
     if (this.game.phase.endsWith('celebrate')) this.drawCelebration();
-    if (this.game.phase === 'complete') this.drawGameLabel('クリア！', '★');
+    if (this.game.phase === 'light-collect') {
+      this.drawLightAbsorption();
+      this.drawGameLabel('光る模型にスマホを向けて、海の光を集めよう！', '✦');
+    }
+    if (this.game.phase === 'stamp') {
+      this.drawStampAward();
+      this.drawGameLabel('光るスタンプをゲット！', '★');
+    }
+    if (this.game.phase === 'complete') {
+      const remaining = STAMP_ORDER.filter((key) => !this.collectedStamps.has(key)).length;
+      this.drawGameLabel(`スタンプあと${remaining}こ！`, '★');
+    }
+    if (this.game.phase === 'all-complete') this.drawAllClear();
+    this.drawStampBook();
   }
 
   drawGameBubble(bubble) {
@@ -622,6 +737,76 @@ export class EffectController {
     ctx.restore();
   }
 
+  drawWhaleBuildWaves() {
+    const ctx = this.ctx;
+    const level = Math.max(0, Math.min(3, this.game.count));
+    const chargingLift = this.game.charging ? this.game.charge * 0.42 : 0;
+    const visualLevel = Math.min(3, level + chargingLift);
+    const baseY = Math.min(this.height - 100, this.gameAnchor.y + this.gameAnchor.size * 0.72);
+    const rise = visualLevel * Math.max(34, this.gameAnchor.size * 0.18);
+    const waveY = baseY - rise;
+    const pulse = 1 - Math.pow(1 - Math.min(1, this.game.wavePulse), 3);
+    const alpha = 0.24 + visualLevel * 0.15;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = Math.min(0.92, alpha * (0.65 + pulse * 0.35));
+    const gradient = ctx.createLinearGradient(0, waveY - 50, 0, this.height);
+    gradient.addColorStop(0, 'rgba(218,253,255,.72)');
+    gradient.addColorStop(0.3, 'rgba(74,222,255,.38)');
+    gradient.addColorStop(0.72, 'rgba(90,143,255,.2)');
+    gradient.addColorStop(1, 'rgba(126,88,221,0)');
+    ctx.fillStyle = gradient;
+    ctx.shadowBlur = 20 + visualLevel * 5;
+    ctx.shadowColor = '#66e5ff';
+
+    const amplitude = 12 + visualLevel * 8 + Math.sin(this.elapsed * 4.8) * 4;
+    ctx.beginPath();
+    ctx.moveTo(-30, this.height + 20);
+    ctx.lineTo(-30, waveY);
+    const segments = 5;
+    for (let index = 0; index < segments; index += 1) {
+      const startX = this.width * index / segments - 30;
+      const endX = this.width * (index + 1) / segments + 30;
+      const direction = index % 2 ? -1 : 1;
+      ctx.bezierCurveTo(
+        startX + (endX - startX) * 0.34,
+        waveY - amplitude * direction,
+        startX + (endX - startX) * 0.66,
+        waveY + amplitude * direction,
+        endX,
+        waveY
+      );
+    }
+    ctx.lineTo(this.width + 30, this.height + 20);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.globalAlpha = Math.min(1, 0.42 + visualLevel * 0.13);
+    ctx.strokeStyle = 'rgba(240,255,255,.92)';
+    ctx.lineWidth = 3 + visualLevel * 0.55;
+    ctx.setLineDash([14, 10]);
+    ctx.lineDashOffset = -this.elapsed * (35 + visualLevel * 12);
+    ctx.beginPath();
+    ctx.moveTo(-20, waveY);
+    for (let index = 0; index < segments; index += 1) {
+      const startX = this.width * index / segments - 20;
+      const endX = this.width * (index + 1) / segments + 20;
+      const direction = index % 2 ? -1 : 1;
+      ctx.bezierCurveTo(
+        startX + (endX - startX) * 0.34,
+        waveY - amplitude * direction,
+        startX + (endX - startX) * 0.66,
+        waveY + amplitude * direction,
+        endX,
+        waveY
+      );
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
   drawWhaleLaunches() {
     const ctx = this.ctx;
     for (const launch of this.game.launches) {
@@ -692,7 +877,8 @@ export class EffectController {
     if (this.activeKey === 'jellyfish') this.drawRainbowRings();
     if (this.activeKey === 'whale') this.drawWhaleCelebration();
     if (this.activeKey === 'turtle') this.drawTurtleCelebration();
-    this.drawGameLabel('やったね！', '★');
+    const label = this.activeKey === 'turtle' ? 'カメ' : this.gameConfig.label;
+    this.drawGameLabel(`${label}、クリア！`, '★');
   }
 
   drawRainbowRings() {
@@ -835,6 +1021,280 @@ export class EffectController {
       ctx.fill();
     }
     ctx.restore();
+  }
+
+  drawStampBook() {
+    const ctx = this.ctx;
+    const y = Math.max(108, Math.min(136, this.height * 0.16));
+    const panelWidth = 148;
+    const panelHeight = 61;
+    ctx.save();
+    ctx.fillStyle = 'rgba(15,10,38,.64)';
+    ctx.strokeStyle = 'rgba(255,255,255,.3)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    this.roundedRect(ctx, 10, y - 14, panelWidth, panelHeight, 17);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.88)';
+    ctx.font = '800 9px -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('ひかりスタンプ', 19, y - 3);
+
+    STAMP_ORDER.forEach((key, index) => {
+      const x = 32 + index * 44;
+      const slotY = y + 23;
+      const isLanding = this.game.phase === 'stamp'
+        && this.game.newStamp === key
+        && this.game.stampTime < STAMP_SECONDS;
+      if (this.collectedStamps.has(key) && !isLanding) {
+        this.drawStampPortrait(key, x, slotY, 33, 0.92, (index - 1) * 0.08);
+      } else {
+        ctx.save();
+        ctx.globalAlpha = 0.48;
+        ctx.strokeStyle = 'rgba(255,255,255,.55)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.arc(x, slotY, 16, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = 'rgba(255,255,255,.62)';
+        ctx.font = '700 13px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(['✦', '≈', '◇'][index], x, slotY + 1);
+        ctx.restore();
+      }
+    });
+    ctx.restore();
+  }
+
+  drawStampPortrait(key, x, y, size, alpha = 1, rotation = 0) {
+    const ctx = this.ctx;
+    const image = this.stampImages[key];
+    const colors = {
+      jellyfish: ['#d7b8ff', '#ffb8e7'],
+      whale: ['#71e5ff', '#6da1ff'],
+      turtle: ['#82f0d1', '#ffe58a']
+    }[key];
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(x, y);
+    ctx.rotate(rotation);
+    ctx.shadowBlur = 13;
+    ctx.shadowColor = colors[0];
+    ctx.fillStyle = 'rgba(20,13,50,.72)';
+    ctx.strokeStyle = colors[0];
+    ctx.lineWidth = Math.max(2, size * 0.07);
+    ctx.beginPath();
+    ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.clip();
+    if (image?.complete && image.naturalWidth) {
+      ctx.globalAlpha = alpha * 0.82;
+      ctx.drawImage(image, -size * 0.55, -size * 0.55, size * 1.1, size * 1.1);
+    } else {
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = colors[1];
+      ctx.font = `800 ${size * 0.46}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(key === 'jellyfish' ? '✦' : key === 'whale' ? '≈' : '◇', 0, 1);
+    }
+    ctx.restore();
+  }
+
+  drawLightAbsorption() {
+    const ctx = this.ctx;
+    const progress = Math.min(1, this.game.absorbTime / LIGHT_COLLECT_SECONDS);
+    const sourceX = this.gameAnchor.x;
+    const sourceY = this.gameAnchor.y + this.gameAnchor.size * 0.04;
+    const focusX = this.width * 0.5;
+    const focusY = Math.max(155, Math.min(this.height * 0.34, sourceY - this.gameAnchor.size * 0.8));
+    const colors = this.gameConfig.effect.colors;
+    const fadeIn = Math.min(1, progress * 5);
+    const fadeOut = Math.min(1, (1 - progress) * 7);
+    const envelope = Math.min(fadeIn, fadeOut);
+    const span = Math.hypot(focusX - sourceX, focusY - sourceY);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+
+    const sourceGlow = ctx.createRadialGradient(sourceX, sourceY, 2, sourceX, sourceY, Math.max(62, this.gameAnchor.size * 0.62));
+    sourceGlow.addColorStop(0, `rgba(255,255,255,${0.58 * envelope})`);
+    sourceGlow.addColorStop(0.28, this.hexToRgba(colors[1] || colors[0], 0.34 * envelope));
+    sourceGlow.addColorStop(1, this.hexToRgba(colors[0], 0));
+    ctx.fillStyle = sourceGlow;
+    ctx.beginPath();
+    ctx.arc(sourceX, sourceY, Math.max(62, this.gameAnchor.size * 0.62), 0, Math.PI * 2);
+    ctx.fill();
+
+    for (let ribbon = 0; ribbon < 5; ribbon += 1) {
+      const side = ribbon % 2 ? -1 : 1;
+      const spread = (48 + ribbon * 24) * side;
+      const controlX1 = sourceX + (focusX - sourceX) * 0.14 + spread * 1.15;
+      const controlY1 = sourceY + (focusY - sourceY) * 0.18;
+      const controlX2 = focusX - (focusX - sourceX) * 0.16 - spread * 1.05;
+      const controlY2 = focusY - (focusY - sourceY) * 0.18;
+      const ribbonGradient = ctx.createLinearGradient(sourceX, sourceY, focusX, focusY);
+      ribbonGradient.addColorStop(0, this.hexToRgba(colors[ribbon % colors.length], 0.08));
+      ribbonGradient.addColorStop(0.46, this.hexToRgba(colors[(ribbon + 1) % colors.length], 0.72 * envelope));
+      ribbonGradient.addColorStop(1, 'rgba(255,255,255,.88)');
+      ctx.strokeStyle = ribbonGradient;
+      ctx.lineWidth = 3.8 + ribbon % 3 * 2;
+      ctx.shadowBlur = 18;
+      ctx.shadowColor = colors[(ribbon + 1) % colors.length];
+      ctx.setLineDash([18 + ribbon * 2, 14]);
+      ctx.lineDashOffset = -this.game.absorbTime * (145 + ribbon * 18);
+      ctx.beginPath();
+      ctx.moveTo(sourceX, sourceY);
+      ctx.bezierCurveTo(controlX1, controlY1, controlX2, controlY2, focusX, focusY);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    const dx = focusX - sourceX;
+    const dy = focusY - sourceY;
+    const length = Math.max(1, Math.hypot(dx, dy));
+    const normalX = -dy / length;
+    const normalY = dx / length;
+    const particleCount = this.profile.lowPower ? 25 : 42;
+    for (let index = 0; index < particleCount; index += 1) {
+      const t = (progress * 1.9 + index / particleCount) % 1;
+      const eased = 1 - Math.pow(1 - t, 1.7);
+      const spiral = Math.sin(t * Math.PI * 6 + index * 1.73);
+      const radius = (1 - t) * Math.min(118, span * 0.38) * (0.38 + index % 5 * 0.12);
+      const x = sourceX + dx * eased + normalX * spiral * radius;
+      const y = sourceY + dy * eased + normalY * spiral * radius;
+      const size = 2 + (index % 5) * 0.9 + t * 2.2;
+      const alpha = Math.sin(t * Math.PI) * envelope;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = colors[index % colors.length];
+      ctx.shadowBlur = 10 + t * 12;
+      ctx.shadowColor = ctx.fillStyle;
+      if (index % 6 === 0) {
+        this.starPath(ctx, size * 1.25, x, y, this.elapsed * 2 + index);
+      } else {
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+      }
+      ctx.fill();
+    }
+
+    ctx.globalAlpha = Math.min(1, 0.45 + progress * 0.7);
+    const focusRadius = 18 + Math.sin(progress * Math.PI) * 24;
+    const focusGlow = ctx.createRadialGradient(focusX, focusY, 0, focusX, focusY, focusRadius * 2.4);
+    focusGlow.addColorStop(0, 'rgba(255,255,255,.98)');
+    focusGlow.addColorStop(0.25, this.hexToRgba(colors[1] || colors[0], 0.82));
+    focusGlow.addColorStop(1, this.hexToRgba(colors[0], 0));
+    ctx.fillStyle = focusGlow;
+    ctx.beginPath();
+    ctx.arc(focusX, focusY, focusRadius * 2.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalAlpha = envelope * 0.8;
+    ctx.strokeStyle = 'rgba(235,255,255,.9)';
+    ctx.lineWidth = 2.5;
+    for (let ring = 0; ring < 3; ring += 1) {
+      ctx.beginPath();
+      ctx.ellipse(
+        focusX,
+        focusY,
+        25 + ring * 16 + Math.sin(this.elapsed * 4 + ring) * 5,
+        9 + ring * 5,
+        this.elapsed * (ring % 2 ? -0.7 : 0.7),
+        0,
+        Math.PI * 2
+      );
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  drawStampAward() {
+    const progress = Math.min(1, this.game.stampTime / STAMP_SECONDS);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const index = Math.max(0, STAMP_ORDER.indexOf(this.game.newStamp));
+    const targetY = Math.max(108, Math.min(136, this.height * 0.16)) + 23;
+    const targetX = 32 + index * 44;
+    const startX = this.width * 0.5;
+    const startY = Math.max(155, this.height * 0.3);
+    const x = startX + (targetX - startX) * eased;
+    const y = startY + (targetY - startY) * eased - Math.sin(progress * Math.PI) * 46;
+    const size = 78 - eased * 45;
+    const ctx = this.ctx;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = Math.sin(progress * Math.PI) * 0.75;
+    ctx.strokeStyle = '#fff5bd';
+    ctx.lineWidth = 4;
+    ctx.shadowBlur = 22;
+    ctx.shadowColor = this.gameConfig.effect.colors[1] || this.gameConfig.effect.colors[0];
+    ctx.beginPath();
+    ctx.arc(x, y, size * (0.72 + progress * 0.45), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+    this.drawStampPortrait(this.game.newStamp, x, y, size, 1, (1 - progress) * -0.24);
+  }
+
+  drawAllClear() {
+    const ctx = this.ctx;
+    const time = this.game.allClearTime;
+    const reveal = Math.min(1, time / 0.75);
+    const cx = this.width / 2;
+    const cy = this.height * 0.48;
+    const radius = Math.min(this.width, this.height) * 0.34;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius * 1.6);
+    glow.addColorStop(0, `rgba(255,255,255,${0.34 * reveal})`);
+    glow.addColorStop(0.3, `rgba(144,235,255,${0.2 * reveal})`);
+    glow.addColorStop(0.62, `rgba(210,151,255,${0.14 * reveal})`);
+    glow.addColorStop(1, 'rgba(118,255,219,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, this.width, this.height);
+
+    ['#ffb8e7', '#71e5ff', '#82f0d1'].forEach((color, index) => {
+      ctx.globalAlpha = reveal * (0.72 - index * 0.1);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 5;
+      ctx.shadowBlur = 24;
+      ctx.shadowColor = color;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * (0.64 + index * 0.23) + Math.sin(time * 2.2 + index) * 8, 0, Math.PI * 2);
+      ctx.stroke();
+    });
+    ctx.restore();
+
+    STAMP_ORDER.forEach((key, index) => {
+      const angle = -Math.PI / 2 + (index - 1) * 0.72 + Math.sin(time * 0.9 + index) * 0.08;
+      const distance = radius * 0.55;
+      this.drawStampPortrait(
+        key,
+        cx + Math.cos(angle) * distance,
+        cy + Math.sin(angle) * distance,
+        66,
+        reveal,
+        Math.sin(time + index) * 0.08
+      );
+    });
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    for (let index = 0; index < 22; index += 1) {
+      const angle = index / 22 * Math.PI * 2 + time * 0.24;
+      const distance = radius * (0.72 + (index % 4) * 0.16);
+      ctx.fillStyle = ['#fff3a8', '#d4faff', '#ffc4eb', '#b9ffe9'][index % 4];
+      ctx.globalAlpha = reveal * (0.55 + index % 3 * 0.16);
+      this.starPath(ctx, 4 + index % 5, cx + Math.cos(angle) * distance, cy + Math.sin(angle) * distance, angle);
+      ctx.fill();
+    }
+    ctx.restore();
+    this.drawGameLabel('海の光、コンプリート！', '✦');
   }
 
   drawCreatureAura(screen, index, config, key) {
@@ -1132,7 +1592,7 @@ export class EffectController {
     ctx.font = '800 13px -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif';
     const width = Math.min(this.width - 28, ctx.measureText(text).width + 58);
     const x = (this.width - width) / 2;
-    const y = Math.max(96, Math.min(this.height - 150, this.gameAnchor.y - this.gameAnchor.size * 0.7 - 54));
+    const y = Math.max(138, Math.min(this.height - 150, this.gameAnchor.y - this.gameAnchor.size * 0.7 - 54));
     ctx.fillStyle = 'rgba(20,13,50,.84)';
     ctx.strokeStyle = 'rgba(255,255,255,.38)';
     ctx.lineWidth = 1;
@@ -1210,6 +1670,18 @@ export class EffectController {
     ctx.beginPath();
     ctx.arc(offsetX, offsetY, radius, 0, Math.PI * 2);
     ctx.closePath();
+  }
+
+  hexToRgba(hex, alpha) {
+    const value = String(hex || '#ffffff').replace('#', '');
+    const normalized = value.length === 3
+      ? value.split('').map((character) => character + character).join('')
+      : value.padEnd(6, 'f').slice(0, 6);
+    const number = Number.parseInt(normalized, 16);
+    const red = number >> 16 & 255;
+    const green = number >> 8 & 255;
+    const blue = number & 255;
+    return `rgba(${red},${green},${blue},${alpha})`;
   }
 
   spiralPath(ctx, x, y, radius) {

@@ -252,6 +252,32 @@ h1 { margin: 0; font-size: 18px; }
 
 .icon-button--right { right: 16px; }
 
+.reset-button {
+  width: 58px;
+  height: 58px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 4px 2px 5px;
+  line-height: 1;
+}
+
+.reset-button__icon {
+  display: block;
+  font-size: 25px;
+  line-height: 25px;
+}
+
+.reset-button__label {
+  display: block;
+  margin-top: 1px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .02em;
+}
+
 .photo-button {
   left: 16px;
   width: 58px;

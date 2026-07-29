@@ -26,13 +26,13 @@
     <header class="hud">
       <p class="eyebrow">DREAMY OCEAN</p>
       <h1>海のなかま AR</h1>
-      <p id="status" role="status">カメラを自動で準備しています…</p>
+      <p id="status" role="status">光る模型にスマホを向けて、海の光を集めよう！</p>
     </header>
 
     <section id="welcome" class="welcome">
       <div class="welcome__icon" aria-hidden="true">✦</div>
       <h2>模型から海のなかまが飛び出すよ</h2>
-      <p>模型と一緒に置いた認識カードを映すと、斜めからでもクラゲ・クジラ・ウミガメを自動で見分けます。</p>
+      <p>光る模型にスマホを向けて、海の光を集めよう！</p>
       <button id="start-button" class="primary-button">タップしてカメラを起動</button>
       <div class="demo-row">
         <label for="demo-creature">カメラなし確認</label>
@@ -52,7 +52,7 @@
       <span class="tracking-guide__corner tracking-guide__corner--tr"></span>
       <span class="tracking-guide__corner tracking-guide__corner--bl"></span>
       <span class="tracking-guide__corner tracking-guide__corner--br"></span>
-      <p>カードは斜め・一部分だけでもOK。模型と一緒に映してね</p>
+      <p>光る模型にスマホを向けて、海の光を集めよう！</p>
     </div>
 
     <div id="active-creature" class="active-creature" hidden></div>
@@ -61,7 +61,10 @@
     <button id="photo-button" class="photo-button" aria-label="AR写真を撮る" hidden disabled>
       <span class="photo-button__lens"></span>
     </button>
-    <button id="reset-button" class="icon-button icon-button--right" aria-label="泳ぎをリセット" hidden>↻</button>
+    <button id="reset-button" class="icon-button icon-button--right reset-button" aria-label="ゲームをやり直す" hidden>
+      <span class="reset-button__icon" aria-hidden="true">↻</span>
+      <span class="reset-button__label">やり直し</span>
+    </button>
 
     <div id="capture-countdown" class="capture-countdown" hidden aria-live="assertive">✦</div>
     <div id="capture-flash" class="capture-flash" aria-hidden="true"></div>
@@ -79,6 +82,6 @@
     </section>
   </main>
 
-  <script type="module" src="./src/main.js?v=20260729-whitecards"></script>
+  <script type="module" src="./src/main.js?v=20260729-lightstamps"></script>
 </body>
 </html>

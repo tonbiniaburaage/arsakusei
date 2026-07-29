@@ -74,4 +74,35 @@ export class SoundController {
       this.tone({ frequency, duration: 0.24, type: index === 2 ? 'triangle' : 'sine', volume: 0.26, delay: index * 0.095 });
     });
   }
+
+  collect() {
+    [280, 360, 470, 620, 820].forEach((frequency, index) => {
+      this.tone({
+        frequency,
+        endFrequency: frequency * 1.32,
+        duration: 0.34,
+        type: index % 2 ? 'triangle' : 'sine',
+        volume: 0.09 + index * 0.018,
+        delay: index * 0.32
+      });
+    });
+  }
+
+  stamp() {
+    this.tone({ frequency: 760, endFrequency: 510, duration: 0.1, type: 'triangle', volume: 0.24 });
+    this.tone({ frequency: 980, endFrequency: 1220, duration: 0.18, type: 'sine', volume: 0.2, delay: 0.08 });
+  }
+
+  finale() {
+    [523, 659, 784, 988, 1175].forEach((frequency, index) => {
+      this.tone({
+        frequency,
+        endFrequency: frequency * 1.08,
+        duration: 0.36,
+        type: index % 2 ? 'triangle' : 'sine',
+        volume: 0.2,
+        delay: index * 0.11
+      });
+    });
+  }
 }

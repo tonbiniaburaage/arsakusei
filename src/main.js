@@ -1,8 +1,8 @@
-import { AREngine } from './ar-engine.js?v=20260729-whitecards';
-import { TrackingEngine } from './tracking-engine.js?v=20260729-whitecards';
-import { EffectController } from './effect-controller.js?v=20260729-whitecards';
-import { PhotoController } from './photo-controller.js?v=20260729-whitecards';
-import { CREATURES, qualityProfile } from './creature-config.js?v=20260729-whitecards';
+import { AREngine } from './ar-engine.js?v=20260729-lightstamps';
+import { TrackingEngine } from './tracking-engine.js?v=20260729-lightstamps';
+import { EffectController } from './effect-controller.js?v=20260729-lightstamps';
+import { PhotoController } from './photo-controller.js?v=20260729-lightstamps';
+import { CREATURES, qualityProfile } from './creature-config.js?v=20260729-lightstamps';
 
 const stage = document.querySelector('#stage');
 const effectsCanvas = document.querySelector('#effects');
@@ -28,12 +28,16 @@ effects.setGameCallbacks({
     const config = CREATURES[key];
     if (phase === 'intro' && config) status.textContent = `ドリーミー${config.label}が現れた！`;
     if (phase === 'jelly-rhythm') status.textContent = `光る泡をタッチ！　${count}/${total}`;
-    if (phase === 'jellyfish-celebrate') status.textContent = 'レインボーフィーバー！';
+    if (phase === 'jellyfish-celebrate') status.textContent = 'クラゲ、クリア！';
     if (phase === 'whale-charge') status.textContent = `クジラを長押ししてみて！　${count}/${total}`;
-    if (phase === 'whale-celebrate') status.textContent = '星が空まで届いたよ！';
+    if (phase === 'whale-rise') status.textContent = 'チャージMAX！ 大波がくるよ！';
+    if (phase === 'whale-celebrate') status.textContent = 'クジラ、クリア！';
     if (phase === 'turtle-polish') status.textContent = `甲羅をぐるぐる磨こう！　${count}/${total}秒`;
-    if (phase === 'turtle-celebrate') status.textContent = '甲羅がキラキラになったよ！';
-    if (phase === 'complete') status.textContent = 'クリア！';
+    if (phase === 'turtle-celebrate') status.textContent = 'カメ、クリア！';
+    if (phase === 'light-collect') status.textContent = '光る模型にスマホを向けて、海の光を集めよう！';
+    if (phase === 'stamp') status.textContent = `${config?.label || '海のなかま'}の光るスタンプをゲット！`;
+    if (phase === 'complete') status.textContent = 'スタンプを集めて、海の光を完成させよう！';
+    if (phase === 'all-complete') status.textContent = '3つの海の光がそろったよ！';
   }
 });
 
@@ -89,7 +93,7 @@ async function startExperience({ tracking, config, auto = false }) {
       trackingGuide.hidden = false;
       activeCreature.hidden = true;
       photoController.setEnabled(false);
-      status.textContent = 'クラゲ・クジラ・カメの認識カードを探しています';
+      status.textContent = '光る模型にスマホを向けて、海の光を集めよう！';
     } else {
       activeCreature.textContent = `${config.icon} ${config.label}`;
       activeCreature.hidden = false;
@@ -147,7 +151,7 @@ function leaveWelcome() {
 resetButton.addEventListener('click', () => {
   engine?.reset?.();
   if (effects.activeKey) effects.restartGame(effects.activeKey);
-  else status.textContent = '泳ぎを最初の状態へ戻しました';
+  else status.textContent = 'ゲームを最初からやり直します';
 });
 
 addEventListener('pagehide', () => engine?.stop?.());
