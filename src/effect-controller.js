@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SoundController } from './sound-controller.js?v=20260729-oceanfinale';
+import { SoundController } from './sound-controller.js?v=20260729-stabledemo';
 
 const GAME_TOTALS = {
   jellyfish: 5,
@@ -146,6 +146,11 @@ export class EffectController {
     }
   }
 
+  clearCollectedStamps() {
+    this.collectedStamps.clear();
+    this.saveCollectedStamps();
+  }
+
   setPhotoMode(active) {
     this.photoMode = active;
   }
@@ -280,6 +285,10 @@ export class EffectController {
 
     if (this.game.phase === 'all-complete') {
       this.game.allClearTime += delta;
+      if (this.game.allClearTime >= 6.2) {
+        this.game.phase = 'finished';
+        this.notifyGame();
+      }
     }
   }
 
@@ -354,7 +363,7 @@ export class EffectController {
       rotation: Math.random() * Math.PI * 2
     });
     this.spawnBurst(bubble.x, bubble.y, 'jellyfish');
-    if (this.game.count === 2) this.game.bubbleHatTime = 1.15;
+    if (this.game.count === 2) this.game.bubbleHatTime = 1.8;
     this.maybeSpawnDuckSurprise(bubble.x, bubble.y);
     this.clearGameControls();
     this.game.bubble = null;
@@ -653,6 +662,7 @@ export class EffectController {
       this.drawGameLabel(`スタンプあと${remaining}こ！`, '★');
     }
     if (this.game.phase === 'all-complete') this.drawAllClear();
+    if (this.game.phase === 'finished') this.drawAllClear('おしまい');
     this.drawStampBook();
   }
 
@@ -855,6 +865,35 @@ export class EffectController {
       this.diamondPath(ctx, 5 + progress * 7, Math.cos(angle) * distance, Math.sin(angle) * distance);
       ctx.fill();
     }
+    ctx.restore();
+
+    // 小さな子にも回す方向が伝わる、甲羅を囲む時計回りの矢印。
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.strokeStyle = 'rgba(235,255,250,.88)';
+    ctx.fillStyle = 'rgba(255,241,166,.95)';
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.shadowBlur = 14;
+    ctx.shadowColor = '#79f1d4';
+    ctx.setLineDash([10, 7]);
+    const guideRadius = radius * 1.14;
+    for (const startAngle of [-Math.PI * 0.8, Math.PI * 0.2]) {
+      const endAngle = startAngle + Math.PI * 0.72;
+      ctx.beginPath();
+      ctx.arc(this.gameAnchor.x, this.gameAnchor.y, guideRadius, startAngle, endAngle);
+      ctx.stroke();
+      const tipX = this.gameAnchor.x + Math.cos(endAngle) * guideRadius;
+      const tipY = this.gameAnchor.y + Math.sin(endAngle) * guideRadius;
+      const tangent = endAngle + Math.PI / 2;
+      ctx.beginPath();
+      ctx.moveTo(tipX, tipY);
+      ctx.lineTo(tipX - Math.cos(tangent - 0.62) * 14, tipY - Math.sin(tangent - 0.62) * 14);
+      ctx.lineTo(tipX - Math.cos(tangent + 0.62) * 14, tipY - Math.sin(tangent + 0.62) * 14);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.setLineDash([]);
     ctx.restore();
 
     ctx.save();
@@ -1240,7 +1279,7 @@ export class EffectController {
     this.drawStampPortrait(this.game.newStamp, x, y, size, 1, (1 - progress) * -0.24);
   }
 
-  drawAllClear() {
+  drawAllClear(label = '海の光、コンプリート！') {
     const ctx = this.ctx;
     const time = this.game.allClearTime;
     const reveal = Math.min(1, time / 0.9);
@@ -1437,7 +1476,7 @@ export class EffectController {
     this.starPath(ctx, 15 + Math.sin(time * 2.4) * 2, cx, cy, time * 0.35);
     ctx.fill();
     ctx.restore();
-    this.drawGameLabel('海の光、コンプリート！', '✦');
+    this.drawGameLabel(label, '✦');
   }
 
   drawCreatureAura(screen, index, config, key) {
@@ -1508,25 +1547,48 @@ export class EffectController {
     if (!this.gameAnchor) return;
     const ctx = this.ctx;
     if (this.game.bubbleHatTime > 0) {
-      const alpha = Math.min(1, this.game.bubbleHatTime * 1.8);
-      const radius = Math.max(30, this.gameAnchor.size * 0.23);
-      const x = this.gameAnchor.x;
-      const y = this.gameAnchor.y - this.gameAnchor.size * 0.48;
+      const age = 1.8 - this.game.bubbleHatTime;
+      const alpha = Math.min(1, this.game.bubbleHatTime * 1.7);
+      const radius = Math.max(28, this.gameAnchor.size * 0.22);
+      const originX = this.gameAnchor.x;
+      const originY = this.gameAnchor.y - this.gameAnchor.size * 0.34;
       ctx.save();
       ctx.globalAlpha = alpha;
       ctx.globalCompositeOperation = 'screen';
-      ctx.strokeStyle = '#e7f8ff';
-      ctx.fillStyle = 'rgba(191,163,255,.2)';
-      ctx.lineWidth = 4;
-      ctx.shadowBlur = 18;
-      ctx.shadowColor = '#ffbde9';
-      ctx.beginPath();
-      ctx.arc(x, y, radius, Math.PI, 0);
-      ctx.lineTo(x + radius * 0.82, y + radius * 0.18);
-      ctx.quadraticCurveTo(x, y + radius * 0.46, x - radius * 0.82, y + radius * 0.18);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
+      ctx.shadowBlur = 14;
+      ctx.shadowColor = '#a9ebff';
+      for (let index = 0; index < 12; index += 1) {
+        const progress = (age * (0.46 + index % 3 * 0.08) + index * 0.083) % 1;
+        const bubbleRadius = Math.max(4, radius * (0.13 + index % 4 * 0.045));
+        const spread = radius * (0.9 - progress * 0.22);
+        const x = originX + Math.sin(index * 2.17 + age * 4.2) * spread;
+        const y = originY - progress * radius * 2.25 + Math.cos(index * 1.31) * radius * 0.2;
+        ctx.globalAlpha = alpha * Math.sin(progress * Math.PI) * 0.86;
+        const bubble = ctx.createRadialGradient(
+          x - bubbleRadius * 0.32,
+          y - bubbleRadius * 0.34,
+          bubbleRadius * 0.08,
+          x,
+          y,
+          bubbleRadius
+        );
+        bubble.addColorStop(0, 'rgba(255,255,255,.9)');
+        bubble.addColorStop(0.28, 'rgba(182,238,255,.28)');
+        bubble.addColorStop(0.74, 'rgba(201,174,255,.15)');
+        bubble.addColorStop(1, 'rgba(143,222,255,.5)');
+        ctx.fillStyle = bubble;
+        ctx.strokeStyle = index % 3 === 0 ? '#ffd0ed' : '#def9ff';
+        ctx.lineWidth = 1.5 + index % 2;
+        ctx.beginPath();
+        ctx.arc(x, y, bubbleRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        if (index % 3 === 0) {
+          ctx.fillStyle = '#fff4b0';
+          this.starPath(ctx, Math.max(2.5, bubbleRadius * 0.32), x + bubbleRadius * 0.7, y - bubbleRadius * 0.6, age + index);
+          ctx.fill();
+        }
+      }
       ctx.restore();
     }
 

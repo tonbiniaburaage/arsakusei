@@ -15,12 +15,12 @@ export const CREATURES = {
     population: [
       {
         type: 'jellyfish2d',
-        size: 1.5,
-        base: [0.42, 0.42, -0.08],
-        range: [0.92, 0.54, 0],
-        speed: 0.46,
+        size: 1.36,
+        base: [0.02, 0.2, -0.08],
+        range: [0.34, 0.18, 0],
+        speed: 0.26,
         phase: 0.2,
-        photo: [0.55, 0.4, -0.08]
+        photo: [0.04, 0.24, -0.08]
       }
     ],
     colors: { body: 0xbca7ff, glow: 0xffb8ec, accent: 0x89dfff }

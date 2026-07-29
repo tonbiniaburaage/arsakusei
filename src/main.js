@@ -1,15 +1,14 @@
-import { AREngine } from './ar-engine.js?v=20260729-oceanfinale';
-import { TrackingEngine } from './tracking-engine.js?v=20260729-oceanfinale';
-import { EffectController } from './effect-controller.js?v=20260729-oceanfinale';
-import { PhotoController } from './photo-controller.js?v=20260729-oceanfinale';
-import { CREATURES, qualityProfile } from './creature-config.js?v=20260729-oceanfinale';
+import { AREngine } from './ar-engine.js?v=20260729-stabledemo';
+import { TrackingEngine } from './tracking-engine.js?v=20260729-stabledemo';
+import { EffectController } from './effect-controller.js?v=20260729-stabledemo';
+import { PhotoController } from './photo-controller.js?v=20260729-stabledemo';
+import { CREATURE_ORDER, CREATURES, qualityProfile } from './creature-config.js?v=20260729-stabledemo';
 
 const stage = document.querySelector('#stage');
 const effectsCanvas = document.querySelector('#effects');
 const welcome = document.querySelector('#welcome');
 const startButton = document.querySelector('#start-button');
 const demoButton = document.querySelector('#demo-button');
-const demoCreature = document.querySelector('#demo-creature');
 const photoButton = document.querySelector('#photo-button');
 const resetButton = document.querySelector('#reset-button');
 const status = document.querySelector('#status');
@@ -22,6 +21,8 @@ const effects = new EffectController(effectsCanvas, profile);
 let engine = null;
 let trackingMode = false;
 let starting = false;
+let demoSequenceActive = false;
+let demoTransitionTimer = null;
 
 effects.setGameCallbacks({
   onStateChange({ key, phase, count, total }) {
@@ -38,6 +39,8 @@ effects.setGameCallbacks({
     if (phase === 'stamp') status.textContent = `${config?.label || '海のなかま'}の光るスタンプをゲット！`;
     if (phase === 'complete') status.textContent = 'スタンプを集めて、海の光を完成させよう！';
     if (phase === 'all-complete') status.textContent = '3つの海の光がそろったよ！';
+    if (phase === 'finished') status.textContent = 'おしまい';
+    handleDemoStateChange(key, phase);
   }
 });
 
@@ -54,11 +57,43 @@ const photoController = new PhotoController({
   toast: document.querySelector('#toast')
 });
 
-startButton.addEventListener('click', () => startExperience({ tracking: true, auto: false }));
-demoButton.addEventListener('click', () => {
-  const key = demoCreature.value;
-  startExperience({ tracking: false, config: CREATURES[key] });
+startButton.addEventListener('click', () => {
+  stopDemoSequence();
+  startExperience({ tracking: true, auto: false });
 });
+demoButton.addEventListener('click', () => startDemoSequence());
+
+function startDemoSequence() {
+  if (starting) return;
+  stopDemoSequence();
+  demoSequenceActive = true;
+  effects.clearCollectedStamps();
+  startExperience({ tracking: false, config: CREATURES[CREATURE_ORDER[0]] });
+}
+
+function stopDemoSequence() {
+  demoSequenceActive = false;
+  if (demoTransitionTimer) clearTimeout(demoTransitionTimer);
+  demoTransitionTimer = null;
+}
+
+function handleDemoStateChange(key, phase) {
+  if (!demoSequenceActive) return;
+  if (phase === 'finished') {
+    demoSequenceActive = false;
+    return;
+  }
+  if (phase !== 'complete' || demoTransitionTimer) return;
+  const currentIndex = CREATURE_ORDER.indexOf(key);
+  const nextKey = CREATURE_ORDER[currentIndex + 1];
+  if (!nextKey) return;
+  status.textContent = `次は${CREATURES[nextKey].label}！`;
+  demoTransitionTimer = setTimeout(() => {
+    demoTransitionTimer = null;
+    if (!demoSequenceActive) return;
+    startExperience({ tracking: false, config: CREATURES[nextKey] });
+  }, 1450);
+}
 
 async function startExperience({ tracking, config, auto = false }) {
   if (starting) return;
@@ -66,7 +101,6 @@ async function startExperience({ tracking, config, auto = false }) {
   trackingMode = tracking;
   startButton.disabled = true;
   demoButton.disabled = true;
-  demoCreature.disabled = true;
   startButton.textContent = tracking ? 'カメラを準備中…' : '演出を準備中…';
   status.textContent = tracking ? 'カメラの使用を許可してください' : `${config.label}を準備しています`;
 
@@ -118,7 +152,6 @@ async function startExperience({ tracking, config, auto = false }) {
       : `開始できませんでした：${friendlyError(error)}`;
     startButton.disabled = false;
     demoButton.disabled = false;
-    demoCreature.disabled = false;
     startButton.textContent = 'タップしてカメラを起動';
   } finally {
     starting = false;
@@ -160,7 +193,7 @@ const pageOptions = new URLSearchParams(location.search);
 if (pageOptions.get('demo') !== '1') {
   setTimeout(() => startExperience({ tracking: true, auto: true }), 80);
 } else {
-  status.textContent = '\u30ab\u30e1\u30e9\u306a\u3057\u78ba\u8a8d\u304b\u3089\u751f\u7269\u3092\u9078\u3079\u307e\u3059';
+  status.textContent = 'デモボタンで3種類の演出を順番に確認できます';
 }
 
 function friendlyError(error) {

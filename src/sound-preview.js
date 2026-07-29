@@ -1,4 +1,4 @@
-import { SoundController } from './sound-controller.js?v=20260729-oceanfinale';
+import { SoundController } from './sound-controller.js?v=20260729-stabledemo';
 
 class PreviewSoundController extends SoundController {
   ensureContext() {

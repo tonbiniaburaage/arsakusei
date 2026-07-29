@@ -472,40 +472,30 @@ export class CreatureController {
     const [rx, ry, rz] = motion.range;
 
     if (motion.type === 'jellyfish2d') {
-      const entranceDuration = 0.48;
-      const orbitDuration = 3.15;
+      const entranceDuration = 0.72;
       if (elapsed < entranceDuration) {
         const progress = Math.min(1, elapsed / entranceDuration);
         const eased = 1 - Math.pow(1 - progress, 3);
         instance.position.set(
-          -rx * 0.82 * this.worldScale * (1 - eased),
-          (by + 0.06) * this.worldScale,
+          (bx - 0.42 * (1 - eased)) * this.worldScale,
+          by * this.worldScale,
           bz * this.worldScale
         );
         instance.userData.choreoScale = 1;
         instance.userData.choreoOpacity = 0.2 + eased * 0.78;
-      } else if (elapsed < entranceDuration + orbitDuration) {
-        const progress = (elapsed - entranceDuration) / orbitDuration;
-        const angle = -Math.PI / 2 + progress * Math.PI * 2;
+      } else {
+        const idleTime = elapsed - entranceDuration;
+        const loop = idleTime * 0.62 + motion.phase;
         instance.position.set(
-          Math.cos(angle) * rx * this.worldScale,
-          (0.24 - Math.sin(angle) * ry) * this.worldScale,
+          (bx + Math.sin(loop) * rx) * this.worldScale,
+          (by + Math.sin(loop * 1.37 + 0.7) * ry) * this.worldScale,
           bz * this.worldScale
         );
         instance.userData.choreoScale = 1;
         instance.userData.choreoOpacity = 0.98;
-      } else {
-        const idleTime = elapsed - entranceDuration - orbitDuration;
-        instance.position.set(
-          (bx + Math.sin(idleTime * 0.42) * 0.2 + Math.sin(idleTime * 0.17) * 0.08) * this.worldScale,
-          (by + Math.sin(idleTime * 0.58) * 0.14 + Math.cos(idleTime * 0.23) * 0.06) * this.worldScale,
-          (bz + Math.cos(idleTime * 0.31) * rz * 0.45) * this.worldScale
-        );
-        instance.userData.choreoScale = 1;
-        instance.userData.choreoOpacity = 0.98;
       }
-      instance.rotation.set(0, 0, 0);
-      visual.position.y = Math.sin(elapsed * 1.1) * 0.025 * this.worldScale;
+      instance.rotation.set(0, 0, Math.sin(elapsed * 0.34) * 0.035);
+      visual.position.y = Math.sin(elapsed * 0.72) * 0.018 * this.worldScale;
       return;
     }
 

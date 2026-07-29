@@ -114,6 +114,7 @@ h1 { margin: 0; font-size: 18px; }
 
 .welcome {
   position: fixed;
+  box-sizing: border-box;
   z-index: 10;
   left: 20px;
   right: 20px;
@@ -179,35 +180,11 @@ h1 { margin: 0; font-size: 18px; }
 .welcome .privacy-note { margin: 12px 0 0; font-size: 10px; opacity: .68; }
 
 .demo-row {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 8px;
+  display: block;
   margin-top: 12px;
-  font-size: 11px;
-  color: #ded1ff;
 }
 
-.demo-row select {
-  min-width: 0;
-  border: 1px solid rgba(255, 255, 255, .22);
-  border-radius: 999px;
-  padding: 7px 10px;
-  color: #fff;
-  background: #2d2051;
-}
-
-.text-button, .target-link {
-  border: 0;
-  padding: 5px;
-  color: #ded1ff;
-  background: transparent;
-  font-size: 11px;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-.target-link { display: block; width: max-content; margin: 8px auto 0; }
+.demo-button { width: 100%; }
 
 .phase-badge, .active-creature {
   position: fixed;
