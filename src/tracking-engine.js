@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MindARThree } from 'mindar-image-three';
-import { CreatureController } from './creature-controller.js?v=20260729-jellyfix';
+import { CreatureController } from './creature-controller.js?v=20260729-oceanfinale';
 
 const TARGETS = [
   { key: 'jellyfish', targetIndex: 0, offset: [0, 0, 0.2] },
@@ -28,7 +28,9 @@ export class TrackingEngine {
     this.roughStableFrames = 0;
     this.roughLastSeen = -Infinity;
     this.roughHoldSeconds = 3.8;
-    this.lossGraceMs = 460;
+    this.lossHoldMs = 1800;
+    this.lossFadeMs = 500;
+    this.stateRetentionMs = 5000;
     this.smoothingPosition = new THREE.Vector3();
     this.smoothingQuaternion = new THREE.Quaternion();
     this.smoothingScale = new THREE.Vector3();
@@ -90,39 +92,56 @@ export class TrackingEngine {
       rough: false,
       tracked: false,
       initialized: false,
-      lossTimer: null
+      lossTimer: null,
+      stateTimer: null,
+      lossStartedAt: 0
     };
     this.entries.push(entry);
 
     anchor.onTargetFound = () => {
       const resumedDuringGrace = this.activeEntry === entry && smoothRoot.visible;
+      const resumeGame = this.effects.activeKey === key;
       if (entry.lossTimer) {
         clearTimeout(entry.lossTimer);
         entry.lossTimer = null;
       }
+      if (entry.stateTimer) {
+        clearTimeout(entry.stateTimer);
+        entry.stateTimer = null;
+      }
+      entry.lossStartedAt = 0;
       entry.tracked = true;
       if (!resumedDuringGrace) entry.initialized = false;
       smoothRoot.visible = true;
+      controller.setTrackingOpacity(1);
       this.hideRoughFallback();
       this.activeKey = key;
       this.activeEntry = entry;
-      if (!resumedDuringGrace) controller.reset();
+      if (!resumedDuringGrace && !resumeGame) controller.reset();
       this.effects.setActive(key);
       if (!resumedDuringGrace) this.callbacks.onTargetFound?.(key, config);
+      if (!resumedDuringGrace && resumeGame) this.effects.notifyGame();
     };
     anchor.onTargetLost = () => {
       entry.tracked = false;
       if (entry.lossTimer) clearTimeout(entry.lossTimer);
+      if (entry.stateTimer) clearTimeout(entry.stateTimer);
+      entry.lossStartedAt = performance.now();
       entry.lossTimer = setTimeout(() => {
         entry.lossTimer = null;
         if (entry.tracked) return;
+        controller.setTrackingOpacity(0);
         smoothRoot.visible = false;
         if (this.activeEntry !== entry) return;
         this.activeKey = null;
         this.activeEntry = null;
-        this.effects.setActive(null);
         this.callbacks.onTargetLost?.(key, config);
-      }, this.lossGraceMs);
+      }, this.lossHoldMs + this.lossFadeMs);
+      entry.stateTimer = setTimeout(() => {
+        entry.stateTimer = null;
+        if (entry.tracked || this.activeEntry?.key === key) return;
+        if (this.effects.activeKey === key) this.effects.setActive(null);
+      }, this.stateRetentionMs);
     };
   }
 
@@ -184,7 +203,16 @@ export class TrackingEngine {
   updateSmoothedAnchors(delta) {
     this.scene.updateMatrixWorld(true);
     for (const entry of this.entries) {
-      if (entry.rough || !entry.tracked || !entry.smoothRoot) continue;
+      if (entry.rough || !entry.smoothRoot) continue;
+      if (!entry.tracked) {
+        if (entry.lossStartedAt && entry.smoothRoot.visible) {
+          const lostFor = performance.now() - entry.lossStartedAt;
+          const fadeProgress = Math.max(0, Math.min(1, (lostFor - this.lossHoldMs) / this.lossFadeMs));
+          entry.controller.setTrackingOpacity(1 - fadeProgress);
+        }
+        continue;
+      }
+      entry.controller.setTrackingOpacity(1);
       entry.anchor.group.getWorldPosition(this.smoothingPosition);
       entry.anchor.group.getWorldQuaternion(this.smoothingQuaternion);
       entry.anchor.group.getWorldScale(this.smoothingScale);
@@ -337,7 +365,9 @@ export class TrackingEngine {
     this.hideRoughFallback();
     this.entries.forEach((entry) => {
       if (entry.lossTimer) clearTimeout(entry.lossTimer);
+      if (entry.stateTimer) clearTimeout(entry.stateTimer);
       entry.lossTimer = null;
+      entry.stateTimer = null;
     });
     this.effects.reset();
   }

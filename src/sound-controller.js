@@ -2,6 +2,7 @@ export class SoundController {
   constructor() {
     this.context = null;
     this.master = null;
+    this.noiseBuffer = null;
   }
 
   ensureContext() {
@@ -33,6 +34,44 @@ export class SoundController {
     gain.connect(this.master);
     oscillator.start(start);
     oscillator.stop(start + duration + 0.03);
+  }
+
+  noise({
+    duration = 0.4,
+    volume = 0.24,
+    delay = 0,
+    filterType = 'bandpass',
+    filterStart = 900,
+    filterEnd = 420
+  } = {}) {
+    const context = this.ensureContext();
+    if (!context || !this.master) return;
+    if (!this.noiseBuffer) {
+      const frameCount = Math.ceil(context.sampleRate * 1.4);
+      this.noiseBuffer = context.createBuffer(1, frameCount, context.sampleRate);
+      const data = this.noiseBuffer.getChannelData(0);
+      for (let index = 0; index < frameCount; index += 1) {
+        data[index] = Math.random() * 2 - 1;
+      }
+    }
+
+    const source = context.createBufferSource();
+    const filter = context.createBiquadFilter();
+    const gain = context.createGain();
+    const start = context.currentTime + delay;
+    source.buffer = this.noiseBuffer;
+    filter.type = filterType;
+    filter.Q.value = filterType === 'bandpass' ? 0.8 : 0.45;
+    filter.frequency.setValueAtTime(Math.max(40, filterStart), start);
+    filter.frequency.exponentialRampToValueAtTime(Math.max(40, filterEnd), start + duration);
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(volume, start + Math.min(0.035, duration * 0.2));
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+    source.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.master);
+    source.start(start);
+    source.stop(start + duration + 0.03);
   }
 
   pop(step = 0) {
@@ -94,15 +133,30 @@ export class SoundController {
   }
 
   finale() {
-    [523, 659, 784, 988, 1175].forEach((frequency, index) => {
+    const notes = [
+      [392, 0],
+      [523, 0.13],
+      [659, 0.26],
+      [784, 0.39],
+      [1047, 0.54]
+    ];
+    notes.forEach(([frequency, delay], index) => {
       this.tone({
         frequency,
-        endFrequency: frequency * 1.08,
-        duration: 0.36,
+        endFrequency: frequency * 1.06,
+        duration: index === notes.length - 1 ? 0.55 : 0.24,
         type: index % 2 ? 'triangle' : 'sine',
-        volume: 0.2,
-        delay: index * 0.11
+        volume: 0.18,
+        delay
       });
+    });
+    this.noise({
+      duration: 0.58,
+      volume: 0.16,
+      delay: 0.34,
+      filterType: 'bandpass',
+      filterStart: 420,
+      filterEnd: 1450
     });
   }
 }

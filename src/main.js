@@ -1,8 +1,8 @@
-import { AREngine } from './ar-engine.js?v=20260729-jellyfix';
-import { TrackingEngine } from './tracking-engine.js?v=20260729-jellyfix';
-import { EffectController } from './effect-controller.js?v=20260729-jellyfix';
-import { PhotoController } from './photo-controller.js?v=20260729-jellyfix';
-import { CREATURES, qualityProfile } from './creature-config.js?v=20260729-jellyfix';
+import { AREngine } from './ar-engine.js?v=20260729-oceanfinale';
+import { TrackingEngine } from './tracking-engine.js?v=20260729-oceanfinale';
+import { EffectController } from './effect-controller.js?v=20260729-oceanfinale';
+import { PhotoController } from './photo-controller.js?v=20260729-oceanfinale';
+import { CREATURES, qualityProfile } from './creature-config.js?v=20260729-oceanfinale';
 
 const stage = document.querySelector('#stage');
 const effectsCanvas = document.querySelector('#effects');

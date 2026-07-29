@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SoundController } from './sound-controller.js?v=20260729-jellyfix';
+import { SoundController } from './sound-controller.js?v=20260729-oceanfinale';
 
 const GAME_TOTALS = {
   jellyfish: 5,
@@ -1243,56 +1243,199 @@ export class EffectController {
   drawAllClear() {
     const ctx = this.ctx;
     const time = this.game.allClearTime;
-    const reveal = Math.min(1, time / 0.75);
+    const reveal = Math.min(1, time / 0.9);
+    const gather = 1 - Math.pow(1 - Math.min(1, time / 1.35), 3);
+    const finale = Math.max(0, Math.min(1, (time - 1.05) / 1.75));
     const cx = this.width / 2;
-    const cy = this.height * 0.48;
-    const radius = Math.min(this.width, this.height) * 0.34;
+    const cy = this.height * 0.46;
+    const radius = Math.min(this.width, this.height) * 0.36;
+
+    ctx.save();
+    ctx.globalAlpha = 0.3 * reveal;
+    const deepOcean = ctx.createLinearGradient(0, 0, 0, this.height);
+    deepOcean.addColorStop(0, 'rgba(5,17,56,.3)');
+    deepOcean.addColorStop(0.5, 'rgba(8,39,82,.52)');
+    deepOcean.addColorStop(1, 'rgba(31,12,67,.5)');
+    ctx.fillStyle = deepOcean;
+    ctx.fillRect(0, 0, this.width, this.height);
+    ctx.restore();
+
+    // 海面から差し込む光。画面全体を使うが、カメラ映像は残す。
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    const beamCount = this.profile.lowPower ? 4 : 7;
+    for (let index = 0; index < beamCount; index += 1) {
+      const topX = this.width * (0.08 + index / Math.max(1, beamCount - 1) * 0.84);
+      const sway = Math.sin(time * 0.42 + index * 1.7) * this.width * 0.025;
+      const beamWidth = this.width * (0.07 + index % 3 * 0.018);
+      const beam = ctx.createLinearGradient(0, 0, 0, cy + radius);
+      beam.addColorStop(0, `rgba(201,249,255,${0.16 * reveal})`);
+      beam.addColorStop(0.54, `rgba(105,220,255,${0.075 * reveal})`);
+      beam.addColorStop(1, 'rgba(119,148,255,0)');
+      ctx.fillStyle = beam;
+      ctx.beginPath();
+      ctx.moveTo(topX - beamWidth, 0);
+      ctx.lineTo(topX + beamWidth, 0);
+      ctx.lineTo(cx + sway + beamWidth * 0.42, cy + radius);
+      ctx.lineTo(cx + sway - beamWidth * 0.42, cy + radius);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // 水面の反射模様。無限ミラーのように奥へ重なる。
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.lineWidth = 2;
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = '#89eaff';
+    const causticRows = this.profile.lowPower ? 4 : 7;
+    for (let row = 0; row < causticRows; row += 1) {
+      const y = this.height * (0.16 + row * 0.105);
+      ctx.globalAlpha = reveal * (0.16 + row % 2 * 0.05);
+      ctx.strokeStyle = row % 3 === 0 ? '#d7fbff' : row % 3 === 1 ? '#8de9ff' : '#c8a9ff';
+      ctx.beginPath();
+      ctx.moveTo(-30, y);
+      for (let segment = 0; segment < 5; segment += 1) {
+        const startX = this.width * segment / 5;
+        const endX = this.width * (segment + 1) / 5 + 30;
+        const lift = Math.sin(time * 1.15 + row + segment * 1.4) * 12;
+        ctx.bezierCurveTo(
+          startX + this.width * 0.06,
+          y - 13 - lift,
+          endX - this.width * 0.06,
+          y + 13 + lift,
+          endX,
+          y
+        );
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
 
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
     const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius * 1.6);
-    glow.addColorStop(0, `rgba(255,255,255,${0.34 * reveal})`);
-    glow.addColorStop(0.3, `rgba(144,235,255,${0.2 * reveal})`);
-    glow.addColorStop(0.62, `rgba(210,151,255,${0.14 * reveal})`);
+    glow.addColorStop(0, `rgba(255,255,255,${0.48 * reveal})`);
+    glow.addColorStop(0.26, `rgba(144,235,255,${0.3 * reveal})`);
+    glow.addColorStop(0.6, `rgba(210,151,255,${0.18 * reveal})`);
     glow.addColorStop(1, 'rgba(118,255,219,0)');
     ctx.fillStyle = glow;
     ctx.fillRect(0, 0, this.width, this.height);
 
-    ['#ffb8e7', '#71e5ff', '#82f0d1'].forEach((color, index) => {
-      ctx.globalAlpha = reveal * (0.72 - index * 0.1);
+    const mirrorColors = ['#ffb8e7', '#71e5ff', '#82f0d1', '#d7f8ff', '#b599ff', '#7fe9ff'];
+    mirrorColors.forEach((color, index) => {
+      const depth = index / mirrorColors.length;
+      ctx.globalAlpha = reveal * (0.74 - depth * 0.42);
       ctx.strokeStyle = color;
-      ctx.lineWidth = 5;
-      ctx.shadowBlur = 24;
+      ctx.lineWidth = Math.max(1.5, 5 - index * 0.55);
+      ctx.shadowBlur = 26 - index * 2;
       ctx.shadowColor = color;
       ctx.beginPath();
-      ctx.arc(cx, cy, radius * (0.64 + index * 0.23) + Math.sin(time * 2.2 + index) * 8, 0, Math.PI * 2);
+      ctx.ellipse(
+        cx,
+        cy,
+        radius * (0.5 + index * 0.18) + Math.sin(time * 1.8 + index) * 7,
+        radius * (0.34 + index * 0.125) + Math.cos(time * 1.5 + index) * 5,
+        time * (index % 2 ? -0.055 : 0.055),
+        0,
+        Math.PI * 2
+      );
       ctx.stroke();
     });
     ctx.restore();
 
+    // フィナーレ中盤に、光る大波が下から画面を横切る。
+    if (finale > 0 && finale < 1) {
+      const waveY = this.height * (1.08 - finale * 0.78);
+      const waveAlpha = Math.sin(finale * Math.PI) * 0.62;
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.globalAlpha = waveAlpha;
+      const wave = ctx.createLinearGradient(0, waveY - 90, 0, this.height);
+      wave.addColorStop(0, 'rgba(226,255,255,.82)');
+      wave.addColorStop(0.3, 'rgba(93,224,255,.46)');
+      wave.addColorStop(0.72, 'rgba(123,129,255,.2)');
+      wave.addColorStop(1, 'rgba(187,126,255,0)');
+      ctx.fillStyle = wave;
+      ctx.beginPath();
+      ctx.moveTo(-50, this.height + 20);
+      ctx.lineTo(-50, waveY);
+      ctx.bezierCurveTo(this.width * 0.18, waveY - 74, this.width * 0.34, waveY + 52, this.width * 0.5, waveY - 14);
+      ctx.bezierCurveTo(this.width * 0.68, waveY - 82, this.width * 0.83, waveY + 58, this.width + 50, waveY - 20);
+      ctx.lineTo(this.width + 50, this.height + 20);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(244,255,255,.88)';
+      ctx.lineWidth = 4;
+      ctx.setLineDash([18, 12]);
+      ctx.lineDashOffset = -time * 95;
+      ctx.beginPath();
+      ctx.moveTo(-30, waveY);
+      ctx.bezierCurveTo(this.width * 0.18, waveY - 72, this.width * 0.34, waveY + 50, this.width * 0.5, waveY - 12);
+      ctx.bezierCurveTo(this.width * 0.68, waveY - 78, this.width * 0.83, waveY + 55, this.width + 30, waveY - 18);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     STAMP_ORDER.forEach((key, index) => {
-      const angle = -Math.PI / 2 + (index - 1) * 0.72 + Math.sin(time * 0.9 + index) * 0.08;
-      const distance = radius * 0.55;
+      const angle = -Math.PI / 2 + (index - 1) * 0.78 + time * (index === 1 ? -0.035 : 0.035);
+      const distance = radius * (0.5 + Math.sin(time * 0.8 + index) * 0.025);
+      const targetX = cx + Math.cos(angle) * distance;
+      const targetY = cy + Math.sin(angle) * distance;
+      const stampY = Math.max(108, Math.min(136, this.height * 0.16)) + 23;
+      const startX = 32 + index * 44;
       this.drawStampPortrait(
         key,
-        cx + Math.cos(angle) * distance,
-        cy + Math.sin(angle) * distance,
-        66,
+        startX + (targetX - startX) * gather,
+        stampY + (targetY - stampY) * gather - Math.sin(gather * Math.PI) * 58,
+        33 + gather * 43,
         reveal,
-        Math.sin(time + index) * 0.08
+        (1 - gather) * (index - 1) * 0.15 + Math.sin(time + index) * 0.06
       );
     });
 
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
-    for (let index = 0; index < 22; index += 1) {
-      const angle = index / 22 * Math.PI * 2 + time * 0.24;
+    const sparkleCount = this.profile.lowPower ? 18 : 30;
+    for (let index = 0; index < sparkleCount; index += 1) {
+      const angle = index / sparkleCount * Math.PI * 2 + time * 0.24;
       const distance = radius * (0.72 + (index % 4) * 0.16);
       ctx.fillStyle = ['#fff3a8', '#d4faff', '#ffc4eb', '#b9ffe9'][index % 4];
       ctx.globalAlpha = reveal * (0.55 + index % 3 * 0.16);
       this.starPath(ctx, 4 + index % 5, cx + Math.cos(angle) * distance, cy + Math.sin(angle) * distance, angle);
       ctx.fill();
     }
+
+    const bubbleCount = this.profile.lowPower ? 12 : 22;
+    for (let index = 0; index < bubbleCount; index += 1) {
+      const loop = (time * (0.12 + index % 4 * 0.018) + index / bubbleCount) % 1;
+      const x = (index * 83 % Math.max(1, this.width)) + Math.sin(time + index) * 18;
+      const y = this.height * (1.06 - loop * 1.14);
+      const bubbleSize = 3 + index % 5 * 1.5;
+      ctx.globalAlpha = reveal * Math.sin(loop * Math.PI) * 0.55;
+      ctx.strokeStyle = index % 3 === 0 ? '#ffd1ef' : '#c8f6ff';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(x, y, bubbleSize, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.globalAlpha = reveal;
+    const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, 62 + Math.sin(time * 2) * 8);
+    core.addColorStop(0, 'rgba(255,255,255,.96)');
+    core.addColorStop(0.18, 'rgba(255,239,168,.72)');
+    core.addColorStop(0.5, 'rgba(121,236,255,.32)');
+    core.addColorStop(1, 'rgba(189,142,255,0)');
+    ctx.fillStyle = core;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 70, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff5ad';
+    ctx.shadowBlur = 28;
+    ctx.shadowColor = '#91eaff';
+    this.starPath(ctx, 15 + Math.sin(time * 2.4) * 2, cx, cy, time * 0.35);
+    ctx.fill();
     ctx.restore();
     this.drawGameLabel('海の光、コンプリート！', '✦');
   }

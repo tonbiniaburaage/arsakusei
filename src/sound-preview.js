@@ -1,46 +1,10 @@
-import { SoundController } from './sound-controller.js?v=20260729-jellyfix';
+import { SoundController } from './sound-controller.js?v=20260729-oceanfinale';
 
 class PreviewSoundController extends SoundController {
   ensureContext() {
     const context = super.ensureContext();
     if (context && this.master) this.master.gain.value = 0.2;
     return context;
-  }
-
-  noise({
-    duration = 0.4,
-    volume = 0.24,
-    delay = 0,
-    filterType = 'bandpass',
-    filterStart = 900,
-    filterEnd = 420
-  } = {}) {
-    const context = this.ensureContext();
-    if (!context || !this.master) return;
-    const frameCount = Math.ceil(context.sampleRate * duration);
-    const buffer = context.createBuffer(1, frameCount, context.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let index = 0; index < frameCount; index += 1) {
-      data[index] = (Math.random() * 2 - 1) * (1 - index / frameCount * 0.35);
-    }
-
-    const source = context.createBufferSource();
-    const filter = context.createBiquadFilter();
-    const gain = context.createGain();
-    const start = context.currentTime + delay;
-    source.buffer = buffer;
-    filter.type = filterType;
-    filter.Q.value = filterType === 'bandpass' ? 0.8 : 0.45;
-    filter.frequency.setValueAtTime(Math.max(40, filterStart), start);
-    filter.frequency.exponentialRampToValueAtTime(Math.max(40, filterEnd), start + duration);
-    gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(volume, start + Math.min(0.035, duration * 0.2));
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-    source.connect(filter);
-    filter.connect(gain);
-    gain.connect(this.master);
-    source.start(start);
-    source.stop(start + duration + 0.03);
   }
 
   waterCracker() {

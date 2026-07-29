@@ -15,6 +15,7 @@ export class CreatureController {
     this.lastElapsed = 0;
     this.photoBlend = 0;
     this.photoMode = false;
+    this.trackingOpacity = 1;
     this.parent.add(this.root);
   }
 
@@ -424,6 +425,10 @@ export class CreatureController {
     this.photoMode = active;
   }
 
+  setTrackingOpacity(opacity) {
+    this.trackingOpacity = Math.max(0, Math.min(1, opacity));
+  }
+
   reset() {
     this.timeOrigin = this.lastElapsed;
     this.instances.forEach((instance, index) => this.applyMotion(instance, 0, index));
@@ -457,7 +462,7 @@ export class CreatureController {
     sprite.scale.set(base.x * pulse * choreoScale, base.y * stretch * choreoScale, 1);
     sprite.material.rotation = Math.sin(phase * 0.8) * 0.045;
     const choreoOpacity = instance.userData.choreoOpacity ?? 0.98;
-    sprite.material.opacity = choreoOpacity * (0.975 + Math.sin(phase * 1.3) * 0.02);
+    sprite.material.opacity = choreoOpacity * (0.975 + Math.sin(phase * 1.3) * 0.02) * this.trackingOpacity;
   }
 
   applyMotion(instance, elapsed, index) {
