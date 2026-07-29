@@ -65,6 +65,7 @@ python -m http.server 8000
 ```text
 index.html                         AR画面
 target-card.html                   3種類のカード表示・印刷
+sound-preview.html                 クリア音5種類のスマホ試聴ページ
 assets/targets/creature-targets.mind  3種類・5ターゲットの認識データ
 assets/sprites/dreamy-jellyfish-source.png  クラゲ2D素材
 assets/sprites/dreamy-jellyfish-stamp.png   背景透過済みのクラゲスタンプ素材
