@@ -1,14 +1,15 @@
 import * as THREE from 'three';
 import { MindARThree } from 'mindar-image-three';
-import { CreatureController } from './creature-controller.js?v=20260729-stabledemo';
+import { CreatureController } from './creature-controller.js?v=20260730-jellyscale';
 
 const TARGETS = [
-  { key: 'jellyfish', targetIndex: 0, offset: [0, 0, 0.2] },
-  { key: 'whale', targetIndex: 1, offset: [0, 0, 0.2] },
-  { key: 'turtle', targetIndex: 2, offset: [0, 0, 0.2] },
+  { key: 'jellyfish', targetIndex: 0, offset: [0, 0, 0.2], sizeCorrection: 1 },
+  { key: 'whale', targetIndex: 1, offset: [0, 0, 0.2], sizeCorrection: 1 },
+  { key: 'turtle', targetIndex: 2, offset: [0, 0, 0.2], sizeCorrection: 1 },
   // 同じカードの部分画像。斜めからカードの左側／下側だけ見えた場合にも使う。
-  { key: 'jellyfish', targetIndex: 3, offset: [0.64, 0, 0.2] },
-  { key: 'jellyfish', targetIndex: 4, offset: [0, 0.18, 0.2] }
+  // 左側ターゲットは幅390px、元カードは幅900px。座標系の幅差を補正して同じ表示サイズにする。
+  { key: 'jellyfish', targetIndex: 3, offset: [0.64, 0, 0.2], sizeCorrection: 900 / 390 },
+  { key: 'jellyfish', targetIndex: 4, offset: [0, 0.18, 0.2], sizeCorrection: 1 }
 ];
 
 export class TrackingEngine {
@@ -71,7 +72,7 @@ export class TrackingEngine {
     this.scene.add(keyLight);
   }
 
-  addCreatureAnchor({ key, targetIndex, offset }) {
+  addCreatureAnchor({ key, targetIndex, offset, sizeCorrection = 1 }) {
     const config = this.configs[key];
     const anchor = this.mindar.addAnchor(targetIndex);
     const smoothRoot = new THREE.Group();
@@ -80,11 +81,14 @@ export class TrackingEngine {
     const world = new THREE.Group();
     world.position.set(...offset);
     smoothRoot.add(world);
-    const controller = new CreatureController(world, config, { worldScale: 0.42 });
+    const controller = new CreatureController(world, config, {
+      worldScale: 0.42 * sizeCorrection
+    });
     const entry = {
       key,
       config,
       targetIndex,
+      sizeCorrection,
       anchor,
       smoothRoot,
       world,
@@ -101,6 +105,7 @@ export class TrackingEngine {
     anchor.onTargetFound = () => {
       const resumedDuringGrace = this.activeEntry === entry && smoothRoot.visible;
       const resumeGame = this.effects.activeKey === key;
+      this.hideCompetingExactEntries(entry);
       if (entry.lossTimer) {
         clearTimeout(entry.lossTimer);
         entry.lossTimer = null;
@@ -143,6 +148,20 @@ export class TrackingEngine {
         if (this.effects.activeKey === key) this.effects.setActive(null);
       }, this.stateRetentionMs);
     };
+  }
+
+  hideCompetingExactEntries(nextEntry) {
+    for (const entry of this.entries) {
+      if (entry === nextEntry || entry.rough || !entry.smoothRoot) continue;
+      if (entry.lossTimer) clearTimeout(entry.lossTimer);
+      if (entry.stateTimer) clearTimeout(entry.stateTimer);
+      entry.lossTimer = null;
+      entry.stateTimer = null;
+      entry.tracked = false;
+      entry.lossStartedAt = 0;
+      entry.controller.setTrackingOpacity(0);
+      entry.smoothRoot.visible = false;
+    }
   }
 
   addRoughFallback() {
