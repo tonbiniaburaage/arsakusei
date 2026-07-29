@@ -51,6 +51,7 @@ python -m http.server 8000
 
 - キャラクター本体を描き直さないため、元画像の顔・色・星柄を維持
 - クラゲは大きな1体が画面内を右回りに回り、その後はふわふわ浮遊
+- クラゲは奥行き方向の移動と拡大縮小をなくし、画面上で一定サイズを保って遊泳
 - クジラは長押しごとに波が高くなり、3回目に画面全面の大波を合成
 - クジラは8の字、ウミガメは四隅、クラゲは大きな円を基調に別々の軌道で遊泳
 - ウミガメは甲羅を指でぐるぐる磨くと、約3秒で宝石のように発光
@@ -66,6 +67,7 @@ index.html                         AR画面
 target-card.html                   3種類のカード表示・印刷
 assets/targets/creature-targets.mind  3種類・5ターゲットの認識データ
 assets/sprites/dreamy-jellyfish-source.png  クラゲ2D素材
+assets/sprites/dreamy-jellyfish-stamp.png   背景透過済みのクラゲスタンプ素材
 assets/sprites/dreamy-whale-source.png      クジラ2D素材
 assets/sprites/dreamy-turtle-source.png     ウミガメ2D素材
 assets/sprites/mini-duck-surprise.png       30%演出のミニアヒル

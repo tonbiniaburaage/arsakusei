@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SoundController } from './sound-controller.js?v=20260729-lightstamps';
+import { SoundController } from './sound-controller.js?v=20260729-jellyfix';
 
 const GAME_TOTALS = {
   jellyfish: 5,
@@ -37,7 +37,7 @@ export class EffectController {
     this.stampImages = {};
     {
       const stampSources = {
-        jellyfish: './assets/sprites/dreamy-jellyfish-source.png',
+        jellyfish: './assets/sprites/dreamy-jellyfish-stamp.png',
         whale: './assets/sprites/dreamy-whale-source.png',
         turtle: './assets/sprites/dreamy-turtle-source.png'
       };

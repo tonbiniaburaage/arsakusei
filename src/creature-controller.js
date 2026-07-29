@@ -449,8 +449,9 @@ export class CreatureController {
     if (!sprite) return;
     const { motion, spriteIndex } = instance.userData;
     const phase = elapsed * motion.speed * 2.4 + motion.phase + spriteIndex * 0.35;
-    const pulse = 1 + Math.sin(phase * 2.2) * 0.025;
-    const stretch = 1 + Math.cos(phase * 1.7) * 0.018;
+    const keepJellyfishSize = motion.type === 'jellyfish2d';
+    const pulse = keepJellyfishSize ? 1 : 1 + Math.sin(phase * 2.2) * 0.025;
+    const stretch = keepJellyfishSize ? 1 : 1 + Math.cos(phase * 1.7) * 0.018;
     const base = sprite.userData.baseScale;
     const choreoScale = instance.userData.choreoScale || 1;
     sprite.scale.set(base.x * pulse * choreoScale, base.y * stretch * choreoScale, 1);
@@ -476,7 +477,7 @@ export class CreatureController {
           (by + 0.06) * this.worldScale,
           bz * this.worldScale
         );
-        instance.userData.choreoScale = 0.35 + eased * 0.65;
+        instance.userData.choreoScale = 1;
         instance.userData.choreoOpacity = 0.2 + eased * 0.78;
       } else if (elapsed < entranceDuration + orbitDuration) {
         const progress = (elapsed - entranceDuration) / orbitDuration;
@@ -486,7 +487,7 @@ export class CreatureController {
           (0.24 - Math.sin(angle) * ry) * this.worldScale,
           bz * this.worldScale
         );
-        instance.userData.choreoScale = 0.94 + Math.sin(progress * Math.PI) * 0.08;
+        instance.userData.choreoScale = 1;
         instance.userData.choreoOpacity = 0.98;
       } else {
         const idleTime = elapsed - entranceDuration - orbitDuration;
@@ -495,7 +496,7 @@ export class CreatureController {
           (by + Math.sin(idleTime * 0.58) * 0.14 + Math.cos(idleTime * 0.23) * 0.06) * this.worldScale,
           (bz + Math.cos(idleTime * 0.31) * rz * 0.45) * this.worldScale
         );
-        instance.userData.choreoScale = 0.96 + Math.sin(idleTime * 0.7) * 0.045;
+        instance.userData.choreoScale = 1;
         instance.userData.choreoOpacity = 0.98;
       }
       instance.rotation.set(0, 0, 0);

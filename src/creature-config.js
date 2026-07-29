@@ -17,7 +17,7 @@ export const CREATURES = {
         type: 'jellyfish2d',
         size: 1.5,
         base: [0.42, 0.42, -0.08],
-        range: [0.92, 0.54, 0.18],
+        range: [0.92, 0.54, 0],
         speed: 0.46,
         phase: 0.2,
         photo: [0.55, 0.4, -0.08]
