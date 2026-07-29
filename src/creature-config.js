@@ -36,7 +36,7 @@ export const CREATURES = {
     animationSpeed: 0.7,
     effect: { colors: ['#e8fbff', '#67e6ff', '#5b9dff', '#ffe98a'], starRatio: 0.3 },
     population: [
-      { type: 'whale2d', size: 1.45, base: [0.05, 0.22, -0.08], range: [0.16, 0.1, 0.04], speed: 0.5, phase: 0.4, photo: [0.08, 0.28, -0.08] }
+      { type: 'whale2d', size: 1.35, base: [0.02, 0.2, -0.08], range: [0.78, 0.38, 0.04], speed: 0.46, phase: 0.4, photo: [0.08, 0.28, -0.08] }
     ],
     colors: { body: 0x719cd1, glow: 0x8ddfff, accent: 0xf0fbff }
   },
@@ -51,7 +51,7 @@ export const CREATURES = {
     animationSpeed: 0.58,
     effect: { colors: ['#d8fff3', '#70efd7', '#fff09f', '#ffb9dc'], starRatio: 0.42 },
     population: [
-      { type: 'turtle2d', size: 1.48, base: [0.04, 0.22, -0.08], range: [0.14, 0.09, 0.035], speed: 0.44, phase: 1.2, photo: [0.05, 0.28, -0.08] }
+      { type: 'turtle2d', size: 1.38, base: [0.02, 0.2, -0.08], range: [0.62, 0.36, 0.035], speed: 0.32, phase: 1.2, photo: [0.05, 0.28, -0.08] }
     ],
     colors: { body: 0x70bca7, glow: 0x8fffdc, accent: 0xffdf91 }
   }

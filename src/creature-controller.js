@@ -506,29 +506,34 @@ export class CreatureController {
     if (motion.type === 'whale2d') {
       const entrance = Math.min(1, elapsed / 0.72);
       const eased = 1 - Math.pow(1 - entrance, 3);
+      const loop = t * 0.92;
+      const leap = Math.pow(Math.max(0, Math.sin(loop * 0.5)), 8) * ry * 0.48;
       instance.position.set(
-        (bx - 0.75 * (1 - eased) + Math.sin(t * 0.72) * rx) * this.worldScale,
-        (by + Math.sin(t * 1.18) * ry) * this.worldScale,
-        (bz + Math.cos(t * 0.45) * rz) * this.worldScale
+        (bx - 0.9 * (1 - eased) + Math.sin(loop) * rx) * this.worldScale,
+        (by + Math.sin(loop * 2) * ry - leap) * this.worldScale,
+        (bz + Math.cos(loop) * rz) * this.worldScale
       );
       instance.userData.choreoScale = 0.72 + eased * 0.28 + Math.sin(t * 1.4) * 0.025;
       instance.userData.choreoOpacity = 0.25 + eased * 0.73;
-      instance.rotation.z = Math.sin(t * 0.72) * 0.045;
-      visual.position.y = Math.sin(t * 1.5) * 0.02 * this.worldScale;
+      instance.rotation.z = Math.cos(loop) * 0.09 - Math.sin(loop * 2) * 0.035;
+      visual.position.y = Math.sin(t * 1.5) * 0.022 * this.worldScale;
       return;
     }
 
     if (motion.type === 'turtle2d') {
       const entrance = Math.min(1, elapsed / 0.78);
       const eased = 1 - Math.pow(1 - entrance, 3);
+      const loop = t * 0.72;
+      const cornerX = Math.tanh(Math.sin(loop) * 2.1);
+      const cornerY = Math.tanh(Math.cos(loop) * 2.1);
       instance.position.set(
-        (bx + 0.72 * (1 - eased) + Math.sin(t * 0.6) * rx) * this.worldScale,
-        (by + Math.sin(t * 1.05) * ry) * this.worldScale,
-        (bz + Math.cos(t * 0.38) * rz) * this.worldScale
+        (bx + 0.78 * (1 - eased) + cornerX * rx) * this.worldScale,
+        (by + cornerY * ry + Math.sin(loop * 2) * 0.035) * this.worldScale,
+        (bz + Math.cos(loop) * rz) * this.worldScale
       );
       instance.userData.choreoScale = 0.7 + eased * 0.3 + Math.sin(t * 1.2) * 0.02;
       instance.userData.choreoOpacity = 0.22 + eased * 0.76;
-      instance.rotation.z = Math.sin(t * 0.58) * 0.035;
+      instance.rotation.z = Math.cos(loop) * 0.1;
       visual.position.y = Math.sin(t * 1.25) * 0.018 * this.worldScale;
       return;
     }

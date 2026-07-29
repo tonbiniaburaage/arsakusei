@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MindARThree } from 'mindar-image-three';
-import { CreatureController } from './creature-controller.js?v=20260727-games';
+import { CreatureController } from './creature-controller.js?v=20260729-wave';
 
 const TARGETS = [
   { key: 'jellyfish', targetIndex: 0, offset: [0, 0, 0.2] },
@@ -28,6 +28,10 @@ export class TrackingEngine {
     this.roughStableFrames = 0;
     this.roughLastSeen = -Infinity;
     this.roughHoldSeconds = 3.8;
+    this.lossGraceMs = 460;
+    this.smoothingPosition = new THREE.Vector3();
+    this.smoothingQuaternion = new THREE.Quaternion();
+    this.smoothingScale = new THREE.Vector3();
     this.scanCanvas = document.createElement('canvas');
     this.scanCanvas.width = 120;
     this.scanCanvas.height = 90;
@@ -42,8 +46,8 @@ export class TrackingEngine {
       maxTrack: 1,
       warmupTolerance: 2,
       missTolerance: 35,
-      filterMinCF: 0.0005,
-      filterBeta: 18,
+      filterMinCF: 0.0015,
+      filterBeta: 2.5,
       uiLoading: 'no',
       uiScanning: 'no',
       uiError: 'no'
@@ -68,28 +72,57 @@ export class TrackingEngine {
   addCreatureAnchor({ key, targetIndex, offset }) {
     const config = this.configs[key];
     const anchor = this.mindar.addAnchor(targetIndex);
+    const smoothRoot = new THREE.Group();
+    smoothRoot.visible = false;
+    this.scene.add(smoothRoot);
     const world = new THREE.Group();
     world.position.set(...offset);
-    anchor.group.add(world);
+    smoothRoot.add(world);
     const controller = new CreatureController(world, config, { worldScale: 0.42 });
-    const entry = { key, config, targetIndex, anchor, world, controller, rough: false };
+    const entry = {
+      key,
+      config,
+      targetIndex,
+      anchor,
+      smoothRoot,
+      world,
+      controller,
+      rough: false,
+      tracked: false,
+      initialized: false,
+      lossTimer: null
+    };
     this.entries.push(entry);
 
     anchor.onTargetFound = () => {
+      const resumedDuringGrace = this.activeEntry === entry && smoothRoot.visible;
+      if (entry.lossTimer) {
+        clearTimeout(entry.lossTimer);
+        entry.lossTimer = null;
+      }
+      entry.tracked = true;
+      if (!resumedDuringGrace) entry.initialized = false;
+      smoothRoot.visible = true;
       this.hideRoughFallback();
       this.activeKey = key;
       this.activeEntry = entry;
-      controller.reset();
+      if (!resumedDuringGrace) controller.reset();
       this.effects.setActive(key);
-      this.callbacks.onTargetFound?.(key, config);
+      if (!resumedDuringGrace) this.callbacks.onTargetFound?.(key, config);
     };
     anchor.onTargetLost = () => {
-      if (this.activeEntry === entry) {
+      entry.tracked = false;
+      if (entry.lossTimer) clearTimeout(entry.lossTimer);
+      entry.lossTimer = setTimeout(() => {
+        entry.lossTimer = null;
+        if (entry.tracked) return;
+        smoothRoot.visible = false;
+        if (this.activeEntry !== entry) return;
         this.activeKey = null;
         this.activeEntry = null;
         this.effects.setActive(null);
         this.callbacks.onTargetLost?.(key, config);
-      }
+      }, this.lossGraceMs);
     };
   }
 
@@ -125,6 +158,7 @@ export class TrackingEngine {
   render() {
     const delta = Math.min(this.clock.getDelta(), 0.05);
     const elapsed = this.clock.elapsedTime;
+    this.updateSmoothedAnchors(delta);
     this.updateRoughDetection(elapsed);
     this.entries.forEach(({ controller }) => controller.update(delta, elapsed));
     this.renderer.render(this.scene, this.camera);
@@ -145,6 +179,36 @@ export class TrackingEngine {
   reset() {
     if (this.activeEntry) this.activeEntry.controller.reset();
     else this.entries.forEach(({ controller }) => controller.reset());
+  }
+
+  updateSmoothedAnchors(delta) {
+    this.scene.updateMatrixWorld(true);
+    for (const entry of this.entries) {
+      if (entry.rough || !entry.tracked || !entry.smoothRoot) continue;
+      entry.anchor.group.getWorldPosition(this.smoothingPosition);
+      entry.anchor.group.getWorldQuaternion(this.smoothingQuaternion);
+      entry.anchor.group.getWorldScale(this.smoothingScale);
+
+      if (!entry.initialized) {
+        entry.smoothRoot.position.copy(this.smoothingPosition);
+        entry.smoothRoot.quaternion.copy(this.smoothingQuaternion);
+        entry.smoothRoot.scale.copy(this.smoothingScale);
+        entry.initialized = true;
+        continue;
+      }
+
+      const distance = entry.smoothRoot.position.distanceTo(this.smoothingPosition);
+      const deadZone = 0.0024;
+      if (distance > deadZone) {
+        const speed = distance / Math.max(delta, 0.001);
+        const cutoff = 2.2 + Math.min(8.5, speed * 5.5);
+        const alpha = 1 - Math.exp(-Math.PI * 2 * cutoff * delta);
+        entry.smoothRoot.position.lerp(this.smoothingPosition, alpha);
+      }
+      const rotationAlpha = 1 - Math.exp(-Math.PI * 2 * 2.8 * delta);
+      entry.smoothRoot.quaternion.slerp(this.smoothingQuaternion, rotationAlpha);
+      entry.smoothRoot.scale.lerp(this.smoothingScale, Math.min(1, rotationAlpha * 0.72));
+    }
   }
 
   updateRoughDetection(elapsed) {
@@ -238,7 +302,9 @@ export class TrackingEngine {
     const projection = this.camera.projectionMatrix.elements;
     const x = (match.x - 0.5) * 2 * depth / projection[0];
     const y = (0.5 - match.y) * 2 * depth / projection[5];
-    entry.world.position.set(x, y, -depth);
+    const target = this.smoothingPosition.set(x, y, -depth);
+    if (!entry.world.visible) entry.world.position.copy(target);
+    else if (entry.world.position.distanceToSquared(target) > 0.0005) entry.world.position.lerp(target, 0.18);
 
     if (!entry.world.visible) {
       entry.world.visible = true;
@@ -269,6 +335,10 @@ export class TrackingEngine {
       this.started = false;
     }
     this.hideRoughFallback();
+    this.entries.forEach((entry) => {
+      if (entry.lossTimer) clearTimeout(entry.lossTimer);
+      entry.lossTimer = null;
+    });
     this.effects.reset();
   }
 }

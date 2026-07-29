@@ -52,6 +52,18 @@ export class SoundController {
     this.tone({ frequency: notes[Math.min(step, notes.length - 1)], duration: 0.12, type: 'sine', volume: 0.24 });
   }
 
+  polish(step = 0) {
+    const notes = [440, 659, 880];
+    const frequency = notes[Math.min(step, notes.length - 1)];
+    this.tone({ frequency, endFrequency: frequency * 1.18, duration: 0.14, type: 'sine', volume: 0.2 });
+    this.tone({ frequency: frequency * 1.5, endFrequency: frequency * 2, duration: 0.1, type: 'triangle', volume: 0.1, delay: 0.04 });
+  }
+
+  duck() {
+    this.tone({ frequency: 520, endFrequency: 360, duration: 0.11, type: 'square', volume: 0.12 });
+    this.tone({ frequency: 610, endFrequency: 430, duration: 0.12, type: 'square', volume: 0.1, delay: 0.12 });
+  }
+
   success(key) {
     const notes = key === 'whale'
       ? [392, 523, 659]

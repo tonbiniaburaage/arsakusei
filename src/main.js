@@ -1,8 +1,8 @@
-import { AREngine } from './ar-engine.js?v=20260727-games';
-import { TrackingEngine } from './tracking-engine.js?v=20260727-games';
-import { EffectController } from './effect-controller.js?v=20260727-games';
-import { PhotoController } from './photo-controller.js?v=20260727-games';
-import { CREATURES, qualityProfile } from './creature-config.js?v=20260727-games';
+import { AREngine } from './ar-engine.js?v=20260729-wave';
+import { TrackingEngine } from './tracking-engine.js?v=20260729-wave';
+import { EffectController } from './effect-controller.js?v=20260729-wave';
+import { PhotoController } from './photo-controller.js?v=20260729-wave';
+import { CREATURES, qualityProfile } from './creature-config.js?v=20260729-wave';
 
 const stage = document.querySelector('#stage');
 const effectsCanvas = document.querySelector('#effects');
@@ -29,9 +29,9 @@ effects.setGameCallbacks({
     if (phase === 'intro' && config) status.textContent = `ドリーミー${config.label}が現れた！`;
     if (phase === 'jelly-rhythm') status.textContent = `光る泡をタッチ！　${count}/${total}`;
     if (phase === 'jellyfish-celebrate') status.textContent = 'レインボーフィーバー！';
-    if (phase === 'whale-charge') status.textContent = `長押しで潮吹きスター！　${count}/${total}`;
+    if (phase === 'whale-charge') status.textContent = `波乗りスターキャッチ！　${count}/${total}`;
     if (phase === 'whale-celebrate') status.textContent = '星が空まで届いたよ！';
-    if (phase === 'turtle-trace') status.textContent = `甲羅の光をなぞろう！　${count}/${total}`;
+    if (phase === 'turtle-polish') status.textContent = `甲羅をぐるぐる磨こう！　${count}/${total}秒`;
     if (phase === 'turtle-celebrate') status.textContent = '甲羅がキラキラになったよ！';
     if (phase === 'complete') status.textContent = 'クリア！';
   }

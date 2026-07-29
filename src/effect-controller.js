@@ -1,11 +1,14 @@
 import * as THREE from 'three';
-import { SoundController } from './sound-controller.js?v=20260727-games';
+import { SoundController } from './sound-controller.js?v=20260729-wave';
 
 const GAME_TOTALS = {
   jellyfish: 5,
   whale: 3,
-  turtle: 5
+  turtle: 3
 };
+
+const TURTLE_POLISH_SECONDS = 3;
+const SURPRISE_CHANCE = 0.14;
 
 export class EffectController {
   constructor(canvas, profile) {
@@ -24,6 +27,10 @@ export class EffectController {
     this.gameLayer = document.querySelector('#game-controls');
     this.gameCallbacks = {};
     this.sound = new SoundController();
+    this.duckImage = new Image();
+    this.duckImage.decoding = 'async';
+    this.duckImage.src = './assets/sprites/mini-duck-surprise.png';
+    this.forceSurprise = new URLSearchParams(location.search).get('surprise') === '1';
     this.game = this.createGameState(null);
     this.tempWorld = new THREE.Vector3();
     this.tempScale = new THREE.Vector3();
@@ -64,11 +71,20 @@ export class EffectController {
       charging: false,
       charge: 0,
       launches: [],
-      traceIndex: 0,
-      tracePoints: [],
       traceTrail: [],
-      tracing: false,
-      moved: false
+      rubbing: false,
+      rubProgress: 0,
+      rubSoundStep: 0,
+      lastRubPoint: null,
+      lastRubMove: 0,
+      moved: false,
+      waveTime: 0,
+      bubbleHatTime: 0,
+      whaleOopsTime: 0,
+      dizzyTime: 0,
+      surpriseChecked: false,
+      surpriseUsed: false,
+      ducks: []
     };
   }
 
@@ -166,12 +182,23 @@ export class EffectController {
 
     if (this.game.phase === 'jelly-rhythm') this.updateJellyfishGame();
     if (this.game.phase === 'whale-charge') this.updateWhaleGame(delta);
-    if (this.game.phase === 'turtle-trace') this.updateTurtleGame();
+    if (this.game.phase === 'turtle-polish') this.updateTurtleGame(delta);
 
     for (const star of this.game.rescuedStars) star.progress = Math.min(1, star.progress + delta * 1.8);
     this.game.rescuedStars = this.game.rescuedStars.filter((star) => star.progress < 1);
     for (const launch of this.game.launches) launch.progress = Math.min(1, launch.progress + delta * (0.72 + launch.power * 0.5));
     this.game.launches = this.game.launches.filter((launch) => launch.progress < 1);
+    this.game.bubbleHatTime = Math.max(0, this.game.bubbleHatTime - delta);
+    this.game.whaleOopsTime = Math.max(0, this.game.whaleOopsTime - delta);
+    this.game.dizzyTime = Math.max(0, this.game.dizzyTime - delta);
+    this.game.ducks.forEach((duck) => {
+      duck.life -= delta;
+      duck.x += duck.vx * delta;
+      duck.y += duck.vy * delta;
+      duck.vy += 44 * delta;
+      duck.rotation += duck.spin * delta;
+    });
+    this.game.ducks = this.game.ducks.filter((duck) => duck.life > 0);
 
     if (this.game.phase.endsWith('celebrate')) {
       this.game.celebrateTime += delta;
@@ -180,7 +207,7 @@ export class EffectController {
           this.spawnAmbient(this.gameAnchor, this.gameConfig, this.activeKey, true);
         }
       }
-      if (this.game.celebrateTime >= 2.8) {
+      if (this.game.celebrateTime >= (this.activeKey === 'whale' ? 3.4 : 2.8)) {
         this.game.phase = 'complete';
         this.notifyGame('complete');
       }
@@ -238,6 +265,8 @@ export class EffectController {
       rotation: Math.random() * Math.PI * 2
     });
     this.spawnBurst(bubble.x, bubble.y, 'jellyfish');
+    if (this.game.count === 2) this.game.bubbleHatTime = 1.15;
+    this.maybeSpawnDuckSurprise(bubble.x, bubble.y);
     this.clearGameControls();
     this.game.bubble = null;
 
@@ -304,6 +333,7 @@ export class EffectController {
     this.sound.splash(power);
     navigator.vibrate?.(28);
     this.game.count += 1;
+    if (power < 0.55) this.game.whaleOopsTime = 1.15;
     this.game.launches.push({
       x: this.gameAnchor.x,
       y: this.gameAnchor.y - this.gameAnchor.size * 0.38,
@@ -311,13 +341,20 @@ export class EffectController {
       progress: 0,
       drift: (Math.random() - 0.5) * 90
     });
-    this.spawnBurst(this.gameAnchor.x, this.gameAnchor.y - this.gameAnchor.size * 0.35, 'whale');
-    if (this.game.count >= this.game.total) this.startCelebrate('whale');
+    const blowholeX = this.gameAnchor.x + this.gameAnchor.size * 0.06;
+    const blowholeY = this.gameAnchor.y - this.gameAnchor.size * 0.42;
+    this.spawnBurst(blowholeX, blowholeY, 'whale');
+    this.spawnWhalePlume(blowholeX, blowholeY, power);
+    this.maybeSpawnDuckSurprise(blowholeX, blowholeY);
+    if (this.game.count >= this.game.total) {
+      this.game.waveTime = 0;
+      this.startCelebrate('whale');
+    }
     else this.notifyGame();
   }
 
   beginTurtleGame() {
-    this.game.phase = 'turtle-trace';
+    this.game.phase = 'turtle-polish';
     this.canvas.classList.add('is-interactive');
     this.createTurtleControl();
     this.notifyGame();
@@ -325,22 +362,26 @@ export class EffectController {
 
   createTurtleControl() {
     const button = this.createGameButton({
-      label: 'カメの甲羅をなぞる',
+      label: 'カメの甲羅を指でぐるぐる磨く',
       className: 'game-action-target game-action-target--turtle'
     });
     button.addEventListener('pointerdown', (event) => {
-      this.game.tracing = true;
+      event.preventDefault();
+      button.setPointerCapture?.(event.pointerId);
+      this.game.rubbing = true;
       this.game.moved = false;
       this.sound.ensureContext();
-      this.processTurtleTrace(event);
+      this.game.lastRubPoint = this.eventPoint(event);
+      this.game.lastRubMove = performance.now();
     });
     button.addEventListener('pointermove', (event) => {
-      if (!this.game.tracing) return;
-      this.game.moved = true;
-      this.processTurtleTrace(event);
+      if (!this.game.rubbing) return;
+      event.preventDefault();
+      this.processTurtlePolish(event);
     });
     const finish = () => {
-      this.game.tracing = false;
+      this.game.rubbing = false;
+      this.game.lastRubPoint = null;
     };
     button.addEventListener('pointerup', finish);
     button.addEventListener('pointercancel', finish);
@@ -350,23 +391,12 @@ export class EffectController {
         this.game.moved = false;
         return;
       }
-      this.advanceTurtleTrace();
+      this.addTurtlePolish(0.75);
     });
   }
 
-  updateTurtleGame() {
+  updateTurtleGame(delta) {
     const size = Math.max(110, this.gameAnchor.size);
-    const offsets = [
-      [-0.42, 0.02],
-      [-0.2, -0.22],
-      [0.08, -0.28],
-      [0.34, -0.12],
-      [0.42, 0.14]
-    ];
-    this.game.tracePoints = offsets.map(([x, y]) => ({
-      x: this.gameAnchor.x + x * size,
-      y: this.gameAnchor.y + y * size
-    }));
     this.positionControl(
       this.game.control,
       this.gameAnchor.x,
@@ -374,35 +404,50 @@ export class EffectController {
       Math.max(210, size * 1.4),
       Math.max(130, size * 0.78)
     );
+    if (this.game.rubbing && performance.now() - this.game.lastRubMove < 190) {
+      this.addTurtlePolish(delta);
+    }
   }
 
-  processTurtleTrace(event) {
-    if (this.game.phase !== 'turtle-trace') return;
-    const rect = this.canvas.getBoundingClientRect();
-    const x = (event.clientX - rect.left) * this.width / rect.width;
-    const y = (event.clientY - rect.top) * this.height / rect.height;
-    this.game.traceTrail.push({ x, y, life: 1 });
-    const point = this.game.tracePoints[this.game.traceIndex];
-    const tolerance = Math.max(52, this.gameAnchor.size * 0.28);
-    if (point && Math.hypot(x - point.x, y - point.y) <= tolerance) this.advanceTurtleTrace();
+  processTurtlePolish(event) {
+    if (this.game.phase !== 'turtle-polish') return;
+    const point = this.eventPoint(event);
+    const previous = this.game.lastRubPoint;
+    this.game.lastRubPoint = point;
+    if (!previous) return;
+    const distance = Math.hypot(point.x - previous.x, point.y - previous.y);
+    if (distance < 2) return;
+    this.game.moved = true;
+    this.game.lastRubMove = performance.now();
+    this.game.traceTrail.push({ x: point.x, y: point.y });
+    if (distance > 34) this.game.dizzyTime = 0.42;
   }
 
-  advanceTurtleTrace() {
-    if (this.game.phase !== 'turtle-trace') return;
-    const point = this.game.tracePoints[this.game.traceIndex] || this.gameAnchor;
-    this.sound.trace(this.game.traceIndex);
-    navigator.vibrate?.(12);
-    this.spawnBurst(point.x, point.y, 'turtle');
-    this.game.traceIndex += 1;
-    this.game.count = this.game.traceIndex;
-    if (this.game.traceIndex >= this.game.total) this.startCelebrate('turtle');
-    else this.notifyGame();
+  addTurtlePolish(seconds) {
+    if (this.game.phase !== 'turtle-polish') return;
+    const previous = this.game.rubProgress;
+    this.game.rubProgress = Math.min(TURTLE_POLISH_SECONDS, previous + seconds);
+    const step = Math.min(2, Math.floor(this.game.rubProgress));
+    if (step > this.game.rubSoundStep) {
+      this.game.rubSoundStep = step;
+      this.sound.polish(step);
+      navigator.vibrate?.(12);
+      this.spawnBurst(this.gameAnchor.x, this.gameAnchor.y, 'turtle');
+    }
+    this.game.count = Math.min(this.game.total, Math.floor(this.game.rubProgress + 0.01));
+    if (this.game.rubProgress >= TURTLE_POLISH_SECONDS) {
+      this.maybeSpawnDuckSurprise(this.gameAnchor.x, this.gameAnchor.y);
+      this.startCelebrate('turtle');
+    } else if (Math.floor(previous) !== Math.floor(this.game.rubProgress)) {
+      this.notifyGame();
+    }
   }
 
   startCelebrate(key) {
     this.game.phase = `${key}-celebrate`;
     this.game.celebrateTime = 0;
     this.game.charging = false;
+    this.game.rubbing = false;
     this.canvas.classList.remove('is-interactive');
     this.clearGameControls();
     this.sound.success(key);
@@ -419,10 +464,16 @@ export class EffectController {
         this.popJellyBubble();
       }
     }
-    if (this.game.phase === 'turtle-trace') {
-      if (event.type === 'pointerdown') this.game.tracing = true;
-      if (event.type === 'pointermove' && this.game.tracing) this.processTurtleTrace(event);
-      if (event.type === 'pointerup' || event.type === 'pointercancel') this.game.tracing = false;
+    if (this.game.phase === 'turtle-polish') {
+      if (event.type === 'pointerdown') {
+        this.game.rubbing = true;
+        this.game.lastRubPoint = this.eventPoint(event);
+      }
+      if (event.type === 'pointermove' && this.game.rubbing) this.processTurtlePolish(event);
+      if (event.type === 'pointerup' || event.type === 'pointercancel') {
+        this.game.rubbing = false;
+        this.game.lastRubPoint = null;
+      }
     }
   }
 
@@ -475,15 +526,17 @@ export class EffectController {
     }
     if (this.game.phase === 'whale-charge') {
       this.drawWhaleCharge();
-      this.drawGameLabel(`長押しで潮吹き！ ${this.game.count}/${this.game.total}`, '≈');
+      this.drawGameLabel(`波乗りスターキャッチ ${this.game.count}/${this.game.total}`, '≈');
     }
-    if (this.game.phase === 'turtle-trace') {
-      this.drawTurtleTrace();
-      this.drawGameLabel(`甲羅の光をなぞろう！ ${this.game.count}/${this.game.total}`, '◇');
+    if (this.game.phase === 'turtle-polish') {
+      this.drawTurtlePolish();
+      this.drawGameLabel(`甲羅をぐるぐる磨こう！ ${Math.round(this.game.rubProgress / TURTLE_POLISH_SECONDS * 100)}%`, '◇');
     }
 
     this.drawRescuedStars();
     this.drawWhaleLaunches();
+    this.drawFunnyReactions();
+    this.drawDuckSurprise();
     if (this.game.phase.endsWith('celebrate')) this.drawCelebration();
     if (this.game.phase === 'complete') this.drawGameLabel('クリア！', '★');
   }
@@ -592,41 +645,47 @@ export class EffectController {
     }
   }
 
-  drawTurtleTrace() {
+  drawTurtlePolish() {
     const ctx = this.ctx;
-    const points = this.game.tracePoints;
-    if (!points.length) return;
+    const progress = this.game.rubProgress / TURTLE_POLISH_SECONDS;
+    const radius = Math.max(58, this.gameAnchor.size * 0.5);
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.setLineDash([7, 9]);
-    ctx.lineWidth = 5;
-    ctx.strokeStyle = 'rgba(207,255,239,.46)';
-    ctx.shadowBlur = 12;
-    ctx.shadowColor = '#78efd7';
-    ctx.beginPath();
-    points.forEach((point, index) => index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y));
-    ctx.stroke();
-    ctx.setLineDash([]);
-    points.forEach((point, index) => {
-      const reached = index < this.game.traceIndex;
-      const active = index === this.game.traceIndex;
-      ctx.fillStyle = reached ? '#fff1a0' : active ? '#ffb9dc' : 'rgba(159,255,226,.72)';
-      ctx.shadowBlur = active ? 22 : 11;
-      this.starPath(ctx, active ? 13 : 9, point.x, point.y, this.elapsed * 0.6 + index);
-      ctx.fill();
-    });
-    ctx.strokeStyle = '#ffb9dc';
+    ctx.translate(this.gameAnchor.x, this.gameAnchor.y);
+    ctx.rotate(this.elapsed * (0.75 + progress * 1.4));
     ctx.lineWidth = 6;
-    ctx.globalAlpha = 0.78;
+    ctx.strokeStyle = 'rgba(211,255,245,.78)';
+    ctx.shadowBlur = 16 + progress * 20;
+    ctx.shadowColor = progress > 0.66 ? '#ffe0ff' : '#78efd7';
     ctx.beginPath();
-    this.game.traceTrail.slice(-28).forEach((point, index) => {
+    ctx.arc(0, 0, radius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
+    ctx.stroke();
+    const facets = 5 + Math.floor(progress * 7);
+    for (let index = 0; index < facets; index += 1) {
+      const angle = index / facets * Math.PI * 2;
+      const distance = radius * (0.38 + (index % 3) * 0.14);
+      ctx.fillStyle = ['#b6fff0', '#fff0a8', '#ffb9e2', '#b9c8ff'][index % 4];
+      this.diamondPath(ctx, 5 + progress * 7, Math.cos(angle) * distance, Math.sin(angle) * distance);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.strokeStyle = '#ffb9dc';
+    ctx.lineWidth = 7;
+    ctx.globalAlpha = 0.48 + progress * 0.34;
+    ctx.shadowBlur = 14;
+    ctx.shadowColor = '#8fffe1';
+    ctx.beginPath();
+    this.game.traceTrail.slice(-34).forEach((point, index) => {
       index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y);
     });
     ctx.stroke();
     ctx.restore();
-    this.game.traceTrail = this.game.traceTrail.slice(-34);
+    this.game.traceTrail = this.game.traceTrail.slice(-42);
   }
 
   drawCelebration() {
@@ -655,8 +714,63 @@ export class EffectController {
   drawWhaleCelebration() {
     const ctx = this.ctx;
     const radius = Math.max(100, this.gameAnchor.size * 0.7);
+    const waveProgress = Math.min(1, this.game.celebrateTime / 1.75);
+    const waveY = this.height * (1.13 - waveProgress * 1.38);
+    const waveAlpha = waveProgress < 0.72 ? 1 : Math.max(0, (1 - waveProgress) / 0.28);
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = waveAlpha;
+    const waveGradient = ctx.createLinearGradient(0, waveY - 120, 0, this.height);
+    waveGradient.addColorStop(0, 'rgba(221,252,255,.82)');
+    waveGradient.addColorStop(0.18, 'rgba(106,229,255,.68)');
+    waveGradient.addColorStop(0.55, 'rgba(112,158,255,.4)');
+    waveGradient.addColorStop(1, 'rgba(213,156,255,.08)');
+    ctx.fillStyle = waveGradient;
+    ctx.shadowBlur = 26;
+    ctx.shadowColor = '#78e8ff';
+    ctx.beginPath();
+    ctx.moveTo(-80, this.height + 80);
+    ctx.lineTo(-80, waveY + 20);
+    const waveWidth = this.width / 3;
+    ctx.bezierCurveTo(
+      waveWidth * 0.45,
+      waveY - 85,
+      waveWidth * 0.72,
+      waveY + 86,
+      waveWidth,
+      waveY - 18
+    );
+    ctx.bezierCurveTo(
+      waveWidth * 1.35,
+      waveY - 104,
+      waveWidth * 1.7,
+      waveY + 78,
+      waveWidth * 2,
+      waveY - 8
+    );
+    ctx.bezierCurveTo(
+      waveWidth * 2.35,
+      waveY - 92,
+      waveWidth * 2.72,
+      waveY + 64,
+      this.width + 80,
+      waveY - 22
+    );
+    ctx.lineTo(this.width + 80, this.height + 80);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = 'rgba(255,255,255,.74)';
+    ctx.setLineDash([18, 12]);
+    ctx.lineDashOffset = -this.game.celebrateTime * 90;
+    ctx.beginPath();
+    ctx.moveTo(-40, waveY + 8);
+    ctx.bezierCurveTo(this.width * 0.18, waveY - 76, this.width * 0.34, waveY + 68, this.width * 0.5, waveY - 12);
+    ctx.bezierCurveTo(this.width * 0.68, waveY - 78, this.width * 0.82, waveY + 62, this.width + 40, waveY - 16);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
     ctx.strokeStyle = '#70e8ff';
     ctx.lineWidth = 5;
     ctx.shadowBlur = 18;
@@ -667,16 +781,42 @@ export class EffectController {
       ctx.arc(this.gameAnchor.x, this.gameAnchor.y + radius * 0.35, radius * (0.55 + index * 0.26), Math.PI * 1.08, Math.PI * 1.92);
       ctx.stroke();
     }
+    for (let index = 0; index < 10; index += 1) {
+      const x = (index * 83 + this.game.celebrateTime * 110) % (this.width + 80) - 40;
+      const y = waveY - 18 - Math.sin(index * 1.7) * 46;
+      ctx.fillStyle = index % 2 ? '#fff1a8' : '#dffcff';
+      index % 3 === 0
+        ? this.starPath(ctx, 5 + index % 4, x, y, this.elapsed + index)
+        : this.bubblePath(ctx, 4 + index % 5, x, y);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
     ctx.restore();
   }
 
   drawTurtleCelebration() {
     const ctx = this.ctx;
     const radius = Math.max(88, this.gameAnchor.size * 0.58);
+    const reveal = Math.min(1, this.game.celebrateTime / 0.75);
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
     ctx.translate(this.gameAnchor.x, this.gameAnchor.y);
     ctx.rotate(this.game.celebrateTime * 0.45);
+    const gemGlow = ctx.createRadialGradient(0, 0, 4, 0, 0, radius);
+    gemGlow.addColorStop(0, `rgba(255,255,255,${0.42 * reveal})`);
+    gemGlow.addColorStop(0.38, `rgba(128,255,226,${0.24 * reveal})`);
+    gemGlow.addColorStop(0.72, `rgba(255,175,231,${0.15 * reveal})`);
+    gemGlow.addColorStop(1, 'rgba(155,125,255,0)');
+    ctx.fillStyle = gemGlow;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(239,255,251,.78)';
+    ctx.lineWidth = 3;
+    ctx.shadowBlur = 25;
+    ctx.shadowColor = '#8fffe1';
+    this.diamondPath(ctx, radius * (0.46 + reveal * 0.1));
+    ctx.stroke();
     ['#8ff5db', '#fff09b', '#ffb7dc'].forEach((color, index) => {
       ctx.strokeStyle = color;
       ctx.lineWidth = 4;
@@ -685,6 +825,15 @@ export class EffectController {
       ctx.ellipse(0, 0, radius * (0.75 + index * 0.2), radius * (0.42 + index * 0.12), index * 0.6, 0, Math.PI * 2);
       ctx.stroke();
     });
+    for (let index = 0; index < 12; index += 1) {
+      const angle = index / 12 * Math.PI * 2 + this.game.celebrateTime * 0.55;
+      const distance = radius * (0.45 + (index % 3) * 0.22);
+      ctx.fillStyle = ['#e7fff9', '#fff2a8', '#ffc6e7', '#c8c6ff'][index % 4];
+      ctx.shadowBlur = 20;
+      ctx.shadowColor = ctx.fillStyle;
+      this.diamondPath(ctx, 7 + index % 4, Math.cos(angle) * distance, Math.sin(angle) * distance);
+      ctx.fill();
+    }
     ctx.restore();
   }
 
@@ -750,6 +899,136 @@ export class EffectController {
       ctx.stroke();
     }
     ctx.restore();
+  }
+
+  drawFunnyReactions() {
+    if (!this.gameAnchor) return;
+    const ctx = this.ctx;
+    if (this.game.bubbleHatTime > 0) {
+      const alpha = Math.min(1, this.game.bubbleHatTime * 1.8);
+      const radius = Math.max(30, this.gameAnchor.size * 0.23);
+      const x = this.gameAnchor.x;
+      const y = this.gameAnchor.y - this.gameAnchor.size * 0.48;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.globalCompositeOperation = 'screen';
+      ctx.strokeStyle = '#e7f8ff';
+      ctx.fillStyle = 'rgba(191,163,255,.2)';
+      ctx.lineWidth = 4;
+      ctx.shadowBlur = 18;
+      ctx.shadowColor = '#ffbde9';
+      ctx.beginPath();
+      ctx.arc(x, y, radius, Math.PI, 0);
+      ctx.lineTo(x + radius * 0.82, y + radius * 0.18);
+      ctx.quadraticCurveTo(x, y + radius * 0.46, x - radius * 0.82, y + radius * 0.18);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    if (this.game.whaleOopsTime > 0) {
+      const alpha = Math.min(1, this.game.whaleOopsTime * 1.7);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.globalCompositeOperation = 'screen';
+      ctx.fillStyle = '#dffcff';
+      ctx.font = '900 30px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.shadowBlur = 14;
+      ctx.shadowColor = '#6ee7ff';
+      ctx.fillText('？', this.gameAnchor.x + this.gameAnchor.size * 0.34, this.gameAnchor.y - this.gameAnchor.size * 0.28);
+      ctx.beginPath();
+      ctx.ellipse(
+        this.gameAnchor.x + this.gameAnchor.size * 0.04,
+        this.gameAnchor.y - this.gameAnchor.size * 0.48,
+        6,
+        12,
+        -0.25,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+      ctx.restore();
+    }
+
+    if (this.game.dizzyTime > 0) {
+      const alpha = Math.min(1, this.game.dizzyTime * 3);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.globalCompositeOperation = 'screen';
+      ctx.strokeStyle = '#fff2a8';
+      ctx.lineWidth = 3;
+      ctx.shadowBlur = 14;
+      ctx.shadowColor = '#ffb5e5';
+      for (const side of [-1, 1]) {
+        const x = this.gameAnchor.x + side * this.gameAnchor.size * 0.18;
+        const y = this.gameAnchor.y - this.gameAnchor.size * 0.1;
+        this.spiralPath(ctx, x, y, Math.max(8, this.gameAnchor.size * 0.065));
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  maybeSpawnDuckSurprise(x, y) {
+    if (this.game.surpriseChecked || this.game.surpriseUsed) return;
+    this.game.surpriseChecked = true;
+    if (!this.forceSurprise && Math.random() > SURPRISE_CHANCE) return;
+    this.game.surpriseUsed = true;
+    const count = 3 + Math.floor(Math.random() * 4);
+    for (let index = 0; index < count; index += 1) {
+      const angle = -Math.PI * (0.2 + index / Math.max(1, count - 1) * 0.62);
+      const speed = 90 + Math.random() * 75;
+      this.game.ducks.push({
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 35,
+        rotation: (Math.random() - 0.5) * 0.3,
+        spin: (Math.random() - 0.5) * 1.8,
+        size: 30 + Math.random() * 18,
+        life: 1.8 + Math.random() * 0.45,
+        maxLife: 2.25
+      });
+    }
+    this.sound.duck();
+  }
+
+  drawDuckSurprise() {
+    if (!this.duckImage.complete || !this.duckImage.naturalWidth) return;
+    const ctx = this.ctx;
+    for (const duck of this.game.ducks) {
+      const alpha = Math.min(1, duck.life * 2.2);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.translate(duck.x, duck.y);
+      ctx.rotate(duck.rotation);
+      ctx.drawImage(this.duckImage, -duck.size / 2, -duck.size / 2, duck.size, duck.size);
+      ctx.restore();
+    }
+  }
+
+  spawnWhalePlume(x, y, power) {
+    const count = 18 + Math.round(power * 12);
+    for (let index = 0; index < count; index += 1) {
+      const spread = (index / Math.max(1, count - 1) - 0.5) * 1.15;
+      const speed = 80 + Math.random() * 95 + power * 70;
+      this.particles.push({
+        key: 'whale',
+        type: index % 6 === 0 ? 'star' : 'drop',
+        color: index % 5 === 0 ? '#fff0a8' : index % 2 ? '#dffcff' : '#70e8ff',
+        x: x + (Math.random() - 0.5) * 10,
+        y,
+        vx: Math.sin(spread) * speed * 0.56,
+        vy: -Math.cos(spread) * speed,
+        rotation: spread,
+        spin: (Math.random() - 0.5) * 3,
+        size: 4 + Math.random() * 8,
+        life: 1,
+        decay: 0.62 + Math.random() * 0.42
+      });
+    }
   }
 
   spawnAmbient(screen, config, key, celebration = false) {
@@ -916,6 +1195,33 @@ export class EffectController {
       index ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
     }
     ctx.closePath();
+  }
+
+  diamondPath(ctx, radius, offsetX = 0, offsetY = 0) {
+    ctx.beginPath();
+    ctx.moveTo(offsetX, offsetY - radius);
+    ctx.lineTo(offsetX + radius * 0.72, offsetY);
+    ctx.lineTo(offsetX, offsetY + radius);
+    ctx.lineTo(offsetX - radius * 0.72, offsetY);
+    ctx.closePath();
+  }
+
+  bubblePath(ctx, radius, offsetX = 0, offsetY = 0) {
+    ctx.beginPath();
+    ctx.arc(offsetX, offsetY, radius, 0, Math.PI * 2);
+    ctx.closePath();
+  }
+
+  spiralPath(ctx, x, y, radius) {
+    ctx.beginPath();
+    for (let step = 0; step <= 24; step += 1) {
+      const progress = step / 24;
+      const angle = progress * Math.PI * 4;
+      const distance = radius * progress;
+      const px = x + Math.cos(angle) * distance;
+      const py = y + Math.sin(angle) * distance;
+      step ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+    }
   }
 
   clear() {
