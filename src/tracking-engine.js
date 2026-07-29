@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MindARThree } from 'mindar-image-three';
-import { CreatureController } from './creature-controller.js?v=20260729-wave2';
+import { CreatureController } from './creature-controller.js?v=20260729-whitecards';
 
 const TARGETS = [
   { key: 'jellyfish', targetIndex: 0, offset: [0, 0, 0.2] },
@@ -42,7 +42,7 @@ export class TrackingEngine {
 
     this.mindar = new MindARThree({
       container,
-      imageTargetSrc: './assets/targets/creature-targets.mind',
+      imageTargetSrc: './assets/targets/creature-targets.mind?v=20260729-whitecards',
       maxTrack: 1,
       warmupTolerance: 2,
       missTolerance: 35,

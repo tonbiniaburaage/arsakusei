@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SoundController } from './sound-controller.js?v=20260729-wave2';
+import { SoundController } from './sound-controller.js?v=20260729-whitecards';
 
 const GAME_TOTALS = {
   jellyfish: 5,
@@ -526,7 +526,7 @@ export class EffectController {
     }
     if (this.game.phase === 'whale-charge') {
       this.drawWhaleCharge();
-      this.drawGameLabel(`波乗りスターキャッチ ${this.game.count}/${this.game.total}`, '≈');
+      this.drawGameLabel(`クジラを長押ししてみて！ ${this.game.count}/${this.game.total}`, '≈');
     }
     if (this.game.phase === 'turtle-polish') {
       this.drawTurtlePolish();
