@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CreatureController } from './creature-controller.js?v=20260730-jellyscale';
+import { CreatureController } from './creature-controller.js?v=20260730-autoquality';
 
 export class AREngine {
   constructor(container, config, profile, effects) {
@@ -10,6 +10,8 @@ export class AREngine {
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(48, innerWidth / innerHeight, 0.01, 100);
     this.clock = new THREE.Clock();
+    this.lastFrameAt = -Infinity;
+    this.frameInterval = profile.maxFPS ? 1000 / profile.maxFPS : 0;
     this.renderer = new THREE.WebGLRenderer({
       alpha: true,
       antialias: !profile.lowPower,
@@ -39,11 +41,13 @@ export class AREngine {
 
   async start() {
     const result = await this.creature.load();
-    this.renderer.setAnimationLoop(() => this.render());
+    this.renderer.setAnimationLoop((timestamp) => this.render(timestamp));
     return { ...result, tracking: false };
   }
 
-  render() {
+  render(timestamp = performance.now()) {
+    if (this.frameInterval && timestamp - this.lastFrameAt < this.frameInterval) return;
+    this.lastFrameAt = timestamp;
     const delta = Math.min(this.clock.getDelta(), 0.05);
     this.creature.update(delta, this.clock.elapsedTime);
     this.renderer.render(this.scene, this.camera);

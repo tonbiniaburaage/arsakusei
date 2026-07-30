@@ -62,13 +62,58 @@ export function selectedCreature() {
   return CREATURES[requested] ? requested : 'jellyfish';
 }
 
+export function isIPhone12OrNewer({
+  userAgent = navigator.userAgent,
+  screenWidth = screen.width,
+  screenHeight = screen.height
+} = {}) {
+  if (!/iPhone/i.test(userAgent)) return false;
+
+  const width = Math.round(Math.min(screenWidth, screenHeight));
+  const height = Math.round(Math.max(screenWidth, screenHeight));
+  const legacySizes = new Set([
+    '320x568',
+    '375x667',
+    '414x736',
+    '375x812',
+    '414x896'
+  ]);
+
+  if (legacySizes.has(`${width}x${height}`)) return false;
+  return width >= 360 && height >= 780;
+}
+
+export function detectDeviceQuality({
+  userAgent = navigator.userAgent,
+  screenWidth = screen.width,
+  screenHeight = screen.height
+} = {}) {
+  if (/Android/i.test(userAgent)) return 'lite';
+  if (/iPhone/i.test(userAgent)) {
+    return isIPhone12OrNewer({ userAgent, screenWidth, screenHeight }) ? 'normal' : 'lite';
+  }
+  return 'normal';
+}
+
 export function qualityProfile() {
+  const options = new URLSearchParams(location.search);
+  const qualityOverride = options.get('quality');
+  const automaticQuality = detectDeviceQuality();
+  const mode = qualityOverride === 'normal'
+    ? 'normal'
+    : ['lite', 'android-lite'].includes(qualityOverride)
+      ? 'lite'
+      : automaticQuality;
   const memory = navigator.deviceMemory || 4;
   const cores = navigator.hardwareConcurrency || 4;
-  const lowPower = memory <= 3 || cores <= 4;
+  const lightweight = mode === 'lite';
+  const lowPower = lightweight || memory <= 3 || cores <= 4;
   return {
+    mode,
+    lightweight,
     lowPower,
-    pixelRatio: Math.min(devicePixelRatio || 1, lowPower ? 1 : 1.5),
+    pixelRatio: lightweight ? 1 : Math.min(devicePixelRatio || 1, lowPower ? 1 : 1.5),
+    maxFPS: lightweight ? 30 : 0,
     maxParticles: lowPower ? 90 : 160,
     spawnRate: lowPower ? 0.72 : 1.2
   };

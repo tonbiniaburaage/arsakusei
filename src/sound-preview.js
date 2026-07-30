@@ -1,4 +1,4 @@
-import { SoundController } from './sound-controller.js?v=20260730-jellyscale';
+import { SoundController } from './sound-controller.js?v=20260730-autoquality';
 
 class PreviewSoundController extends SoundController {
   ensureContext() {

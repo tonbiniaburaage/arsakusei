@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MindARThree } from 'mindar-image-three';
-import { CreatureController } from './creature-controller.js?v=20260730-jellyscale';
+import { CreatureController } from './creature-controller.js?v=20260730-autoquality';
 
 const TARGETS = [
   { key: 'jellyfish', targetIndex: 0, offset: [0, 0, 0.2], sizeCorrection: 1 },
@@ -20,6 +20,8 @@ export class TrackingEngine {
     this.effects = effects;
     this.callbacks = callbacks;
     this.clock = new THREE.Clock();
+    this.lastFrameAt = -Infinity;
+    this.frameInterval = profile.maxFPS ? 1000 / profile.maxFPS : 0;
     this.started = false;
     this.activeKey = null;
     this.activeEntry = null;
@@ -189,11 +191,13 @@ export class TrackingEngine {
     await this.mindar.start();
     this.roughVideo = this.getCaptureSources().video;
     this.started = true;
-    this.renderer.setAnimationLoop(() => this.render());
+    this.renderer.setAnimationLoop((timestamp) => this.render(timestamp));
     return { results, tracking: true };
   }
 
-  render() {
+  render(timestamp = performance.now()) {
+    if (this.frameInterval && timestamp - this.lastFrameAt < this.frameInterval) return;
+    this.lastFrameAt = timestamp;
     const delta = Math.min(this.clock.getDelta(), 0.05);
     const elapsed = this.clock.elapsedTime;
     this.updateSmoothedAnchors(delta);

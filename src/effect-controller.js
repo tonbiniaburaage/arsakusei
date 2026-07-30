@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SoundController } from './sound-controller.js?v=20260730-jellyscale';
+import { SoundController } from './sound-controller.js?v=20260730-autoquality';
 
 const GAME_TOTALS = {
   jellyfish: 5,
