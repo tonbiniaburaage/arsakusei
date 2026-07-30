@@ -1,4 +1,4 @@
-import { SoundController } from './sound-controller.js?v=20260730-comic-v4';
+import { SoundController } from './sound-controller.js?v=20260731-comic-v5';
 
 class PreviewSoundController extends SoundController {
   ensureContext() {

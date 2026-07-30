@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SoundController } from './sound-controller.js?v=20260730-comic-v4';
+import { SoundController } from './sound-controller.js?v=20260731-comic-v5';
 
 const GAME_TOTALS = {
   jellyfish: 5,
@@ -8,9 +8,9 @@ const GAME_TOTALS = {
 };
 
 const CELEBRATE_SECONDS = {
-  jellyfish: 3.1,
-  whale: 3.35,
-  turtle: 3.1
+  jellyfish: 2.55,
+  whale: 2.75,
+  turtle: 2.4
 };
 const TURTLE_POLISH_SECONDS = 3;
 const SURPRISE_CHANCE = 0.3;
@@ -106,7 +106,6 @@ export class EffectController {
       wavePulse: 0,
       bubbleHatTime: 0,
       whaleOopsTime: 0,
-      dizzyTime: 0,
       absorbTime: 0,
       stampTime: 0,
       allClearTime: 0,
@@ -249,7 +248,6 @@ export class EffectController {
     this.game.launches = this.game.launches.filter((launch) => launch.progress < 1);
     this.game.bubbleHatTime = Math.max(0, this.game.bubbleHatTime - delta);
     this.game.whaleOopsTime = Math.max(0, this.game.whaleOopsTime - delta);
-    this.game.dizzyTime = Math.max(0, this.game.dizzyTime - delta);
     this.game.wavePulse = Math.min(1, this.game.wavePulse + delta * 2.1);
     this.game.ducks.forEach((duck) => {
       duck.delay -= delta;
@@ -531,7 +529,6 @@ export class EffectController {
     this.game.moved = true;
     this.game.lastRubMove = performance.now();
     this.game.traceTrail.push({ x: point.x, y: point.y });
-    if (distance > 34) this.game.dizzyTime = 0.42;
   }
 
   addTurtlePolish(seconds) {
@@ -1232,7 +1229,7 @@ export class EffectController {
     const length = Math.max(1, Math.hypot(dx, dy));
     const normalX = -dy / length;
     const normalY = dx / length;
-    const particleCount = this.profile.lowPower ? 25 : 42;
+    const particleCount = this.profile.lowPower ? 20 : 42;
     for (let index = 0; index < particleCount; index += 1) {
       const t = (progress * 1.9 + index / particleCount) % 1;
       const eased = 1 - Math.pow(1 - t, 1.7);
@@ -1335,7 +1332,7 @@ export class EffectController {
     // 海面から差し込む光。画面全体を使うが、カメラ映像は残す。
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
-    const beamCount = this.profile.lowPower ? 4 : 7;
+    const beamCount = this.profile.lowPower ? 3 : 7;
     for (let index = 0; index < beamCount; index += 1) {
       const topX = this.width * (0.08 + index / Math.max(1, beamCount - 1) * 0.84);
       const sway = Math.sin(time * 0.42 + index * 1.7) * this.width * 0.025;
@@ -1361,7 +1358,7 @@ export class EffectController {
     ctx.lineWidth = 2;
     ctx.shadowBlur = 12;
     ctx.shadowColor = '#89eaff';
-    const causticRows = this.profile.lowPower ? 4 : 7;
+    const causticRows = this.profile.lowPower ? 3 : 7;
     for (let row = 0; row < causticRows; row += 1) {
       const y = this.height * (0.16 + row * 0.105);
       ctx.globalAlpha = reveal * (0.16 + row % 2 * 0.05);
@@ -1469,7 +1466,7 @@ export class EffectController {
 
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
-    const sparkleCount = this.profile.lowPower ? 18 : 30;
+    const sparkleCount = this.profile.lowPower ? 14 : 30;
     for (let index = 0; index < sparkleCount; index += 1) {
       const angle = index / sparkleCount * Math.PI * 2 + time * 0.24;
       const distance = radius * (0.72 + (index % 4) * 0.16);
@@ -1479,7 +1476,7 @@ export class EffectController {
       ctx.fill();
     }
 
-    const bubbleCount = this.profile.lowPower ? 12 : 22;
+    const bubbleCount = this.profile.lowPower ? 10 : 22;
     for (let index = 0; index < bubbleCount; index += 1) {
       const loop = (time * (0.12 + index % 4 * 0.018) + index / bubbleCount) % 1;
       const x = (index * 83 % Math.max(1, this.width)) + Math.sin(time + index) * 18;
@@ -1653,32 +1650,15 @@ export class EffectController {
       ctx.restore();
     }
 
-    if (this.game.dizzyTime > 0) {
-      const alpha = Math.min(1, this.game.dizzyTime * 3);
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.globalCompositeOperation = 'screen';
-      ctx.strokeStyle = '#fff2a8';
-      ctx.lineWidth = 3;
-      ctx.shadowBlur = 14;
-      ctx.shadowColor = '#ffb5e5';
-      for (const side of [-1, 1]) {
-        const x = this.gameAnchor.x + side * this.gameAnchor.size * 0.18;
-        const y = this.gameAnchor.y - this.gameAnchor.size * 0.1;
-        this.spiralPath(ctx, x, y, Math.max(8, this.gameAnchor.size * 0.065));
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
   }
 
   drawJellyBalloonReaction() {
     const time = this.game.celebrateTime;
-    if (time > 1.52 && time < 1.68) return;
+    if (time > 1.16 && time < 1.34) return;
     const ctx = this.ctx;
-    const inflation = time < 0.68
-      ? 1 - Math.pow(1 - time / 0.68, 3)
-      : Math.max(0, 1 - (time - 1.68) / 0.78);
+    const inflation = time < 0.56
+      ? 1 - Math.pow(1 - time / 0.56, 3)
+      : Math.max(0, 1 - (time - 1.34) / 0.74);
     const radius = Math.max(48, this.gameAnchor.size * (0.5 + inflation * 0.12));
 
     ctx.save();
@@ -1704,8 +1684,8 @@ export class EffectController {
     );
     ctx.stroke();
 
-    if (time >= 1.2) {
-      const leak = Math.min(1, (time - 1.2) / 0.72);
+    if (time >= 0.96) {
+      const leak = Math.min(1, (time - 0.96) / 0.58);
       for (let index = 0; index < 6; index += 1) {
         const x = this.gameAnchor.x + radius * 0.72 + leak * (28 + index * 12);
         const y = this.gameAnchor.y + Math.sin(index * 1.8 + time * 12) * (5 + index);
@@ -1723,49 +1703,10 @@ export class EffectController {
   drawTurtleDizzyReaction() {
     const time = this.game.celebrateTime;
     const ctx = this.ctx;
-    const alpha = Math.min(1, time * 4) * Math.max(0, 1 - (time - 2.45) / 0.62);
+    const alpha = Math.min(1, time * 4) * Math.max(0, 1 - (time - 1.8) / 0.5);
     const radius = Math.max(56, this.gameAnchor.size * 0.52);
-    const eyeRadius = Math.max(10, this.gameAnchor.size * 0.052);
-    const eyeY = this.gameAnchor.y - this.gameAnchor.size * 0.115;
-    const eyeOffsets = [-0.49, -0.225];
     ctx.save();
     ctx.globalAlpha = alpha;
-    for (const [index, offset] of eyeOffsets.entries()) {
-      const x = this.gameAnchor.x + this.gameAnchor.size * offset;
-      const wobble = Math.sin(time * 13 + index * 2.4) * eyeRadius * 0.08;
-      const eyeGradient = ctx.createRadialGradient(
-        x - eyeRadius * 0.32,
-        eyeY - eyeRadius * 0.34,
-        eyeRadius * 0.08,
-        x,
-        eyeY,
-        eyeRadius
-      );
-      eyeGradient.addColorStop(0, '#6572d8');
-      eyeGradient.addColorStop(0.38, '#172b72');
-      eyeGradient.addColorStop(1, '#07143f');
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.fillStyle = eyeGradient;
-      ctx.shadowBlur = 8;
-      ctx.shadowColor = '#82f4dd';
-      ctx.beginPath();
-      ctx.arc(x, eyeY + wobble, eyeRadius, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.globalCompositeOperation = 'screen';
-      ctx.strokeStyle = index ? '#fff2a8' : '#f9d4ff';
-      ctx.lineWidth = Math.max(2.6, eyeRadius * 0.24);
-      ctx.lineCap = 'round';
-      ctx.shadowBlur = 13;
-      ctx.shadowColor = index ? '#ffb5e5' : '#8fffe1';
-      ctx.save();
-      ctx.translate(x, eyeY + wobble);
-      ctx.rotate(time * (index ? -5.8 : 6.4));
-      this.spiralPath(ctx, 0, 0, eyeRadius * 0.7);
-      ctx.stroke();
-      ctx.restore();
-    }
-
     ctx.globalCompositeOperation = 'screen';
     for (let index = 0; index < 7; index += 1) {
       const angle = time * 3.6 + index / 7 * Math.PI * 2;
@@ -1788,7 +1729,7 @@ export class EffectController {
     this.game.surpriseChecked = true;
     if (!this.forceSurprise && Math.random() > SURPRISE_CHANCE) return;
     this.game.surpriseUsed = true;
-    const count = this.profile.lowPower ? 5 : 8;
+    const count = this.profile.lowPower ? 4 : 8;
     for (let index = 0; index < count; index += 1) {
       const isLateDuck = index === count - 1;
       const size = isLateDuck ? 24 : 29 + index % 3 * 4;
@@ -1800,7 +1741,7 @@ export class EffectController {
         size,
         life: 4.2,
         maxLife: 4.2,
-        delay: isLateDuck ? 1.42 : index * 0.055,
+        delay: isLateDuck ? 0.82 : index * 0.055,
         age: 0,
         bobPhase: index * 1.23,
         isLateDuck
@@ -1837,20 +1778,6 @@ export class EffectController {
       ctx.drawImage(this.duckImage, -duck.size / 2, -duck.size / 2, duck.size, duck.size);
       if (duck.isLateDuck && duck.age < 1.15) {
         ctx.rotate(-duck.rotation);
-        const bubbleX = duck.size * 0.3;
-        const bubbleY = -duck.size * 1.32;
-        ctx.fillStyle = 'rgba(20,13,50,.9)';
-        ctx.strokeStyle = 'rgba(255,255,255,.82)';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        this.roundedRect(ctx, bubbleX - 31, bubbleY - 14, 62, 25, 12);
-        ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle = '#fff';
-        ctx.font = '800 11px -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('まって〜！', bubbleX, bubbleY - 1);
         ctx.fillStyle = '#bff6ff';
         ctx.beginPath();
         ctx.arc(duck.size * 0.54, -duck.size * 0.58, 3.4, 0, Math.PI * 2);
@@ -2074,18 +2001,6 @@ export class EffectController {
     const green = number >> 8 & 255;
     const blue = number & 255;
     return `rgba(${red},${green},${blue},${alpha})`;
-  }
-
-  spiralPath(ctx, x, y, radius) {
-    ctx.beginPath();
-    for (let step = 0; step <= 24; step += 1) {
-      const progress = step / 24;
-      const angle = progress * Math.PI * 4;
-      const distance = radius * progress;
-      const px = x + Math.cos(angle) * distance;
-      const py = y + Math.sin(angle) * distance;
-      step ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
-    }
   }
 
   clear() {

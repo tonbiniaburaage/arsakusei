@@ -114,7 +114,7 @@ export function qualityProfile() {
     lowPower,
     pixelRatio: lightweight ? 1 : Math.min(devicePixelRatio || 1, lowPower ? 1 : 1.5),
     maxFPS: lightweight ? 30 : 0,
-    maxParticles: lowPower ? 90 : 160,
-    spawnRate: lowPower ? 0.72 : 1.2
+    maxParticles: lowPower ? 72 : 160,
+    spawnRate: lowPower ? 0.58 : 1.2
   };
 }

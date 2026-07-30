@@ -1,8 +1,8 @@
-import { AREngine } from './ar-engine.js?v=20260730-comic-v4';
-import { TrackingEngine } from './tracking-engine.js?v=20260730-comic-v4';
-import { EffectController } from './effect-controller.js?v=20260730-comic-v4';
-import { PhotoController } from './photo-controller.js?v=20260730-comic-v4';
-import { CREATURE_ORDER, CREATURES, qualityProfile } from './creature-config.js?v=20260730-comic-v4';
+import { AREngine } from './ar-engine.js?v=20260731-comic-v5';
+import { TrackingEngine } from './tracking-engine.js?v=20260731-comic-v5';
+import { EffectController } from './effect-controller.js?v=20260731-comic-v5';
+import { PhotoController } from './photo-controller.js?v=20260731-comic-v5';
+import { CREATURE_ORDER, CREATURES, qualityProfile } from './creature-config.js?v=20260731-comic-v5';
 
 const stage = document.querySelector('#stage');
 const effectsCanvas = document.querySelector('#effects');
