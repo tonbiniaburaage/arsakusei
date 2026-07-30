@@ -103,6 +103,27 @@ export class SoundController {
     this.tone({ frequency: 610, endFrequency: 430, duration: 0.12, type: 'square', volume: 0.1, delay: 0.12 });
   }
 
+  comic(key) {
+    if (key === 'jellyfish') {
+      this.tone({ frequency: 760, endFrequency: 1050, duration: 0.42, type: 'sine', volume: 0.12, delay: 0.28 });
+      this.tone({ frequency: 620, endFrequency: 105, duration: 0.72, type: 'triangle', volume: 0.16, delay: 1.22 });
+      this.noise({ duration: 0.34, volume: 0.08, delay: 1.42, filterType: 'highpass', filterStart: 920, filterEnd: 240 });
+      return;
+    }
+    if (key === 'turtle') {
+      [760, 610, 470].forEach((frequency, index) => {
+        this.tone({
+          frequency,
+          endFrequency: frequency * 0.72,
+          duration: 0.19,
+          type: 'triangle',
+          volume: 0.11,
+          delay: 0.62 + index * 0.16
+        });
+      });
+    }
+  }
+
   success(key) {
     const notes = key === 'whale'
       ? [392, 523, 659]

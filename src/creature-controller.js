@@ -16,6 +16,7 @@ export class CreatureController {
     this.photoBlend = 0;
     this.photoMode = false;
     this.trackingOpacity = 1;
+    this.reaction = { type: null, time: 0 };
     this.parent.add(this.root);
   }
 
@@ -429,8 +430,14 @@ export class CreatureController {
     this.trackingOpacity = Math.max(0, Math.min(1, opacity));
   }
 
+  setReaction(type = null, time = 0) {
+    this.reaction.type = type;
+    this.reaction.time = time;
+  }
+
   reset() {
     this.timeOrigin = this.lastElapsed;
+    this.setReaction();
     this.instances.forEach((instance, index) => this.applyMotion(instance, 0, index));
   }
 
@@ -445,8 +452,64 @@ export class CreatureController {
       this.applyMotion(instance, localElapsed, index);
       this.applyPhotoPose(instance);
       this.animateParts(instance, localElapsed);
+      this.applyReaction(instance);
       this.animateSprite(instance, localElapsed);
     });
+  }
+
+  applyReaction(instance) {
+    const { type, time } = this.reaction;
+    if (!type || !instance.userData.isSprite2D) return;
+
+    if (type === 'jelly-balloon') {
+      if (time < 0.68) {
+        const progress = 1 - Math.pow(1 - time / 0.68, 3);
+        instance.userData.choreoScale *= 1 + progress * 0.48;
+        instance.position.y += progress * 0.12 * this.worldScale;
+      } else if (time < 1.42) {
+        const progress = (time - 0.68) / 0.74;
+        instance.userData.choreoScale *= 1.48 - progress * 0.08;
+        instance.position.x += Math.sin(progress * Math.PI) * 0.14 * this.worldScale;
+        instance.position.y += (0.12 + progress * 1.72) * this.worldScale;
+        instance.rotation.z += Math.sin(progress * Math.PI * 4) * 0.08;
+      } else if (time < 1.64) {
+        instance.userData.choreoOpacity = 0;
+      } else if (time < 2.48) {
+        const progress = 1 - Math.pow(1 - (time - 1.64) / 0.84, 3);
+        instance.position.x += (1 - progress) * 1.85 * this.worldScale;
+        instance.position.y += (0.2 - progress * 0.12) * this.worldScale;
+        instance.userData.choreoScale *= 0.72 + progress * 0.28;
+        instance.rotation.z += Math.sin(progress * Math.PI * 5) * (1 - progress) * 0.24;
+      } else {
+        const settle = Math.max(0, 1 - (time - 2.48) / 0.58);
+        instance.rotation.z += Math.sin((time - 2.48) * 18) * settle * 0.12;
+        instance.userData.choreoScale *= 1 - Math.sin((time - 2.48) * 12) * settle * 0.035;
+      }
+      return;
+    }
+
+    if (type === 'turtle-dizzy') {
+      if (time < 1.05) {
+        const progress = 1 - Math.pow(1 - time / 1.05, 3);
+        instance.rotation.z += progress * Math.PI * 4.4;
+        instance.userData.choreoScale *= 1 + Math.sin(progress * Math.PI * 5) * 0.045;
+      } else if (time < 2.42) {
+        const progress = (time - 1.05) / 1.37;
+        instance.position.x += Math.sin(progress * Math.PI * 2.3) * 0.34 * this.worldScale;
+        instance.position.y += Math.sin(progress * Math.PI) * -0.18 * this.worldScale;
+        instance.rotation.z += Math.sin(progress * Math.PI * 3) * 0.26 * (1 - progress);
+      } else {
+        const settle = Math.max(0, 1 - (time - 2.42) / 0.65);
+        instance.rotation.z += Math.sin((time - 2.42) * 16) * settle * 0.11;
+      }
+      return;
+    }
+
+    if (type === 'whale-surprised' && time > 0.72) {
+      const glance = Math.min(1, (time - 0.72) / 0.28)
+        * Math.max(0, 1 - (time - 2.55) / 0.55);
+      instance.rotation.z += Math.sin((time - 0.72) * 2.2) * glance * 0.07;
+    }
   }
 
   animateSprite(instance, elapsed) {
