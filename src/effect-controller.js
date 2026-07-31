@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SoundController } from './sound-controller.js?v=20260731-stable-v7';
+import { SoundController } from './sound-controller.js?v=20260731-stable-v9';
 
 const GAME_TOTALS = {
   jellyfish: 5,
@@ -13,7 +13,6 @@ const CELEBRATE_SECONDS = {
   turtle: 2.4
 };
 const TURTLE_POLISH_SECONDS = 3;
-const SURPRISE_CHANCE = 0.3;
 const LIGHT_COLLECT_SECONDS = 2;
 const STAMP_SECONDS = 2;
 const STAMP_STORAGE_KEY = 'dreamy-ocean-light-stamps';
@@ -55,7 +54,6 @@ export class EffectController {
       }
     }
     this.collectedStamps = this.loadCollectedStamps();
-    this.forceSurprise = new URLSearchParams(location.search).get('surprise') === '1';
     this.game = this.createGameState(null);
     this.tempWorld = new THREE.Vector3();
     this.tempScale = new THREE.Vector3();
@@ -132,7 +130,8 @@ export class EffectController {
       key: this.game.key,
       phase,
       count: this.game.count,
-      total: this.game.total
+      total: this.game.total,
+      remaining: STAMP_ORDER.filter((key) => !this.collectedStamps.has(key)).length
     });
   }
 
@@ -661,7 +660,13 @@ export class EffectController {
     }
     if (this.game.phase === 'stamp') {
       this.drawStampAward();
-      this.drawGameLabel('光るスタンプをゲット！', '★');
+      const hasNextCreature = this.collectedStamps.size < STAMP_ORDER.length;
+      this.drawGameLabel(
+        hasNextCreature
+          ? '次の海の生き物にカメラを向けてみよう！'
+          : '光るスタンプをゲット！',
+        '★'
+      );
     }
     if (this.game.phase === 'complete') {
       const remaining = STAMP_ORDER.filter((key) => !this.collectedStamps.has(key)).length;
@@ -1703,7 +1708,6 @@ export class EffectController {
   spawnWhaleDuckParade() {
     if (this.game.surpriseChecked || this.game.surpriseUsed) return;
     this.game.surpriseChecked = true;
-    if (!this.forceSurprise && Math.random() > SURPRISE_CHANCE) return;
     this.game.surpriseUsed = true;
     const count = this.profile.lowPower ? 4 : 8;
     for (let index = 0; index < count; index += 1) {
@@ -1900,7 +1904,7 @@ export class EffectController {
     ctx.textBaseline = 'middle';
     ctx.shadowBlur = 10;
     ctx.shadowColor = this.activeKey === 'whale' ? '#68dfff' : this.activeKey === 'turtle' ? '#79f1d4' : '#c7a8ff';
-    ctx.fillText(`${icon} ${text}`, this.width / 2, y + height / 2 + 1);
+    ctx.fillText(`${icon} ${text}`, this.width / 2, y + height / 2 + 1, width - 24);
     ctx.restore();
   }
 

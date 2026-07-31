@@ -1,8 +1,8 @@
-import { AREngine } from './ar-engine.js?v=20260731-stable-v7';
-import { TrackingEngine } from './tracking-engine.js?v=20260731-stable-v7';
-import { EffectController } from './effect-controller.js?v=20260731-stable-v7';
-import { PhotoController } from './photo-controller.js?v=20260731-stable-v7';
-import { CREATURE_ORDER, CREATURES, qualityProfile } from './creature-config.js?v=20260731-stable-v7';
+import { AREngine } from './ar-engine.js?v=20260731-stable-v9';
+import { TrackingEngine } from './tracking-engine.js?v=20260731-stable-v9';
+import { EffectController } from './effect-controller.js?v=20260731-stable-v9';
+import { PhotoController } from './photo-controller.js?v=20260731-stable-v9';
+import { CREATURE_ORDER, CREATURES, qualityProfile } from './creature-config.js?v=20260731-stable-v9';
 
 const stage = document.querySelector('#stage');
 const effectsCanvas = document.querySelector('#effects');
@@ -25,7 +25,7 @@ let demoSequenceActive = false;
 let demoTransitionTimer = null;
 
 effects.setGameCallbacks({
-  onStateChange({ key, phase, count, total }) {
+  onStateChange({ key, phase, count, total, remaining }) {
     const config = CREATURES[key];
     if (phase === 'intro' && config) status.textContent = `ドリーミー${config.label}が現れた！`;
     if (phase === 'jelly-rhythm') status.textContent = `光る泡をタッチ！　${count}/${total}`;
@@ -36,7 +36,11 @@ effects.setGameCallbacks({
     if (phase === 'turtle-polish') status.textContent = `甲羅をぐるぐる磨こう！　${count}/${total}秒`;
     if (phase === 'turtle-celebrate') status.textContent = 'カメ、クリア！';
     if (phase === 'light-collect') status.textContent = '光る模型にスマホを向けて、海の光を集めよう！';
-    if (phase === 'stamp') status.textContent = `${config?.label || '海のなかま'}の光るスタンプをゲット！`;
+    if (phase === 'stamp') {
+      status.textContent = remaining > 0
+        ? '次の海の生き物にカメラを向けてみよう！'
+        : `${config?.label || '海のなかま'}の光るスタンプをゲット！`;
+    }
     if (phase === 'complete') status.textContent = 'スタンプを集めて、海の光を完成させよう！';
     if (phase === 'all-complete') status.textContent = '3つの海の光がそろったよ！';
     if (phase === 'finished') status.textContent = 'おしまい';
