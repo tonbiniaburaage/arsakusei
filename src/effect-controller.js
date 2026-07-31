@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SoundController } from './sound-controller.js?v=20260731-comic-v5';
+import { SoundController } from './sound-controller.js?v=20260731-stable-v7';
 
 const GAME_TOTALS = {
   jellyfish: 5,
@@ -14,10 +14,11 @@ const CELEBRATE_SECONDS = {
 };
 const TURTLE_POLISH_SECONDS = 3;
 const SURPRISE_CHANCE = 0.3;
-const LIGHT_COLLECT_SECONDS = 2.7;
-const STAMP_SECONDS = 1.15;
+const LIGHT_COLLECT_SECONDS = 2;
+const STAMP_SECONDS = 2;
 const STAMP_STORAGE_KEY = 'dreamy-ocean-light-stamps';
 const STAMP_ORDER = ['jellyfish', 'whale', 'turtle'];
+const INTRO_SECONDS = 1;
 
 export class EffectController {
   constructor(canvas, profile) {
@@ -225,8 +226,7 @@ export class EffectController {
     if (this.game.key !== this.activeKey) this.restartGame(this.activeKey);
 
     if (this.game.phase === 'intro') {
-      const introDuration = this.activeKey === 'jellyfish' ? 3.7 : 1.8;
-      if (this.activeElapsed >= introDuration) {
+      if (this.activeElapsed >= INTRO_SECONDS) {
         if (this.activeKey === 'jellyfish') this.beginJellyfishGame();
         if (this.activeKey === 'whale') this.beginWhaleGame();
         if (this.activeKey === 'turtle') this.beginTurtleGame();
@@ -386,52 +386,12 @@ export class EffectController {
 
   beginWhaleGame() {
     this.game.phase = 'whale-charge';
-    this.createWhaleControl();
+    this.canvas.classList.add('is-interactive');
     this.notifyGame();
-  }
-
-  createWhaleControl() {
-    const button = this.createGameButton({
-      label: '長押しして潮吹きパワーをためる',
-      className: 'game-action-target game-action-target--whale'
-    });
-    button.addEventListener('pointerdown', (event) => {
-      event.preventDefault();
-      button.setPointerCapture?.(event.pointerId);
-      this.sound.ensureContext();
-      this.game.charging = true;
-      this.game.charge = Math.max(0.12, this.game.charge);
-      this.game.moved = false;
-    });
-    const release = (event) => {
-      if (!this.game.charging) return;
-      event.preventDefault();
-      this.game.charging = false;
-      this.game.moved = true;
-      this.launchWhaleStar(Math.max(0.48, this.game.charge));
-      this.game.charge = 0;
-    };
-    button.addEventListener('pointerup', release);
-    button.addEventListener('pointercancel', release);
-    button.addEventListener('click', (event) => {
-      event.preventDefault();
-      if (this.game.moved) {
-        this.game.moved = false;
-        return;
-      }
-      this.launchWhaleStar(0.62);
-    });
   }
 
   updateWhaleGame(delta) {
     if (this.game.charging) this.game.charge = Math.min(1, this.game.charge + delta * 0.92);
-    this.positionControl(
-      this.game.control,
-      this.gameAnchor.x,
-      this.gameAnchor.y + this.gameAnchor.size * 0.08,
-      Math.max(180, this.gameAnchor.size * 1.4),
-      Math.max(120, this.gameAnchor.size * 0.72)
-    );
   }
 
   launchWhaleStar(power) {
@@ -588,6 +548,22 @@ export class EffectController {
   }
 
   handlePointer(event) {
+    if (this.game.phase === 'whale-charge') {
+      if (event.type === 'pointerdown' && !this.game.charging) {
+        event.preventDefault();
+        this.canvas.setPointerCapture?.(event.pointerId);
+        this.sound.ensureContext();
+        this.game.charging = true;
+        this.game.charge = Math.max(0.12, this.game.charge);
+      }
+      if ((event.type === 'pointerup' || event.type === 'pointercancel') && this.game.charging) {
+        event.preventDefault();
+        this.game.charging = false;
+        this.launchWhaleStar(Math.max(0.48, this.game.charge));
+        this.game.charge = 0;
+      }
+      return;
+    }
     if (this.game.phase === 'jelly-rhythm' && event.type === 'pointerdown') {
       const point = this.eventPoint(event);
       const bubble = this.game.bubble;
@@ -663,7 +639,7 @@ export class EffectController {
     if (this.game.phase === 'whale-charge') {
       this.drawWhaleBuildWaves();
       this.drawWhaleCharge();
-      this.drawGameLabel(`クジラを長押ししてみて！ ${this.game.count}/${this.game.total}`, '≈');
+      this.drawGameLabel(`画面を長押ししてみて！ ${this.game.count}/${this.game.total}`, '≈');
     }
     if (this.game.phase === 'whale-rise') {
       this.drawWhaleBuildWaves();

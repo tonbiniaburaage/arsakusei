@@ -1,8 +1,8 @@
-import { AREngine } from './ar-engine.js?v=20260731-comic-v5';
-import { TrackingEngine } from './tracking-engine.js?v=20260731-comic-v5';
-import { EffectController } from './effect-controller.js?v=20260731-comic-v5';
-import { PhotoController } from './photo-controller.js?v=20260731-comic-v5';
-import { CREATURE_ORDER, CREATURES, qualityProfile } from './creature-config.js?v=20260731-comic-v5';
+import { AREngine } from './ar-engine.js?v=20260731-stable-v7';
+import { TrackingEngine } from './tracking-engine.js?v=20260731-stable-v7';
+import { EffectController } from './effect-controller.js?v=20260731-stable-v7';
+import { PhotoController } from './photo-controller.js?v=20260731-stable-v7';
+import { CREATURE_ORDER, CREATURES, qualityProfile } from './creature-config.js?v=20260731-stable-v7';
 
 const stage = document.querySelector('#stage');
 const effectsCanvas = document.querySelector('#effects');
@@ -30,7 +30,7 @@ effects.setGameCallbacks({
     if (phase === 'intro' && config) status.textContent = `ドリーミー${config.label}が現れた！`;
     if (phase === 'jelly-rhythm') status.textContent = `光る泡をタッチ！　${count}/${total}`;
     if (phase === 'jellyfish-celebrate') status.textContent = 'クラゲ、クリア！';
-    if (phase === 'whale-charge') status.textContent = `クジラを長押ししてみて！　${count}/${total}`;
+    if (phase === 'whale-charge') status.textContent = `画面を長押ししてみて！　${count}/${total}`;
     if (phase === 'whale-rise') status.textContent = 'チャージMAX！ 大波がくるよ！';
     if (phase === 'whale-celebrate') status.textContent = 'クジラ、クリア！';
     if (phase === 'turtle-polish') status.textContent = `甲羅をぐるぐる磨こう！　${count}/${total}秒`;

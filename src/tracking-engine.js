@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MindARThree } from 'mindar-image-three';
-import { CreatureController } from './creature-controller.js?v=20260731-comic-v5';
+import { CreatureController } from './creature-controller.js?v=20260731-stable-v7';
 
 const TARGETS = [
   { key: 'jellyfish', targetIndex: 0, offset: [0, 0, 0.2], sizeCorrection: 1 },
@@ -31,9 +31,9 @@ export class TrackingEngine {
     this.roughStableFrames = 0;
     this.roughLastSeen = -Infinity;
     this.roughHoldSeconds = 3.8;
-    this.lossHoldMs = 1800;
-    this.lossFadeMs = 500;
-    this.stateRetentionMs = 5000;
+    this.lossHoldMs = 2800;
+    this.lossFadeMs = 700;
+    this.stateRetentionMs = 7000;
     this.smoothingPosition = new THREE.Vector3();
     this.smoothingQuaternion = new THREE.Quaternion();
     this.smoothingScale = new THREE.Vector3();
@@ -106,7 +106,18 @@ export class TrackingEngine {
 
     anchor.onTargetFound = () => {
       const resumedDuringGrace = this.activeEntry === entry && smoothRoot.visible;
+      const handoffEntry = this.activeEntry !== entry
+        && this.activeEntry?.key === key
+        && this.activeEntry?.smoothRoot?.visible
+        ? this.activeEntry
+        : null;
       const resumeGame = this.effects.activeKey === key;
+      if (handoffEntry) {
+        smoothRoot.position.copy(handoffEntry.smoothRoot.position);
+        smoothRoot.quaternion.copy(handoffEntry.smoothRoot.quaternion);
+        smoothRoot.scale.copy(handoffEntry.smoothRoot.scale);
+        entry.initialized = true;
+      }
       this.hideCompetingExactEntries(entry);
       if (entry.lossTimer) {
         clearTimeout(entry.lossTimer);
@@ -118,16 +129,16 @@ export class TrackingEngine {
       }
       entry.lossStartedAt = 0;
       entry.tracked = true;
-      if (!resumedDuringGrace) entry.initialized = false;
+      if (!resumedDuringGrace && !handoffEntry) entry.initialized = false;
       smoothRoot.visible = true;
       controller.setTrackingOpacity(1);
       this.hideRoughFallback();
       this.activeKey = key;
       this.activeEntry = entry;
-      if (!resumedDuringGrace && !resumeGame) controller.reset();
+      if (!resumedDuringGrace && !handoffEntry && !resumeGame) controller.reset();
       this.effects.setActive(key);
-      if (!resumedDuringGrace) this.callbacks.onTargetFound?.(key, config);
-      if (!resumedDuringGrace && resumeGame) this.effects.notifyGame();
+      if (!resumedDuringGrace && !handoffEntry) this.callbacks.onTargetFound?.(key, config);
+      if (!resumedDuringGrace && !handoffEntry && resumeGame) this.effects.notifyGame();
     };
     anchor.onTargetLost = () => {
       entry.tracked = false;
@@ -249,16 +260,20 @@ export class TrackingEngine {
       }
 
       const distance = entry.smoothRoot.position.distanceTo(this.smoothingPosition);
-      const deadZone = 0.0024;
+      const deadZone = 0.006;
       if (distance > deadZone) {
-        const speed = distance / Math.max(delta, 0.001);
-        const cutoff = 2.2 + Math.min(8.5, speed * 5.5);
+        // 小刻みな手ブレには追従せず、大きく構え直した時だけ少し速く戻す。
+        const cutoff = distance > 0.16 ? 1.8 : 0.72;
         const alpha = 1 - Math.exp(-Math.PI * 2 * cutoff * delta);
         entry.smoothRoot.position.lerp(this.smoothingPosition, alpha);
       }
-      const rotationAlpha = 1 - Math.exp(-Math.PI * 2 * 2.8 * delta);
-      entry.smoothRoot.quaternion.slerp(this.smoothingQuaternion, rotationAlpha);
-      entry.smoothRoot.scale.lerp(this.smoothingScale, Math.min(1, rotationAlpha * 0.72));
+      const rotationDistance = entry.smoothRoot.quaternion.angleTo(this.smoothingQuaternion);
+      if (rotationDistance > 0.025) {
+        const rotationCutoff = rotationDistance > 0.35 ? 1.55 : 0.68;
+        const rotationAlpha = 1 - Math.exp(-Math.PI * 2 * rotationCutoff * delta);
+        entry.smoothRoot.quaternion.slerp(this.smoothingQuaternion, rotationAlpha);
+      }
+      // 認識ノイズによる拡大・縮小を防ぐため、初回取得後のスケールは固定する。
     }
   }
 
@@ -355,7 +370,7 @@ export class TrackingEngine {
     const y = (0.5 - match.y) * 2 * depth / projection[5];
     const target = this.smoothingPosition.set(x, y, -depth);
     if (!entry.world.visible) entry.world.position.copy(target);
-    else if (entry.world.position.distanceToSquared(target) > 0.0005) entry.world.position.lerp(target, 0.18);
+    else if (entry.world.position.distanceToSquared(target) > 0.0036) entry.world.position.lerp(target, 0.08);
 
     if (!entry.world.visible) {
       entry.world.visible = true;

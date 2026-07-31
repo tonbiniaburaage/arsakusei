@@ -462,28 +462,26 @@ export class CreatureController {
     if (!type || !instance.userData.isSprite2D) return;
 
     if (type === 'jelly-balloon') {
-      if (time < 0.56) {
-        const progress = 1 - Math.pow(1 - time / 0.56, 3);
-        instance.userData.choreoScale *= 1 + progress * 0.48;
-        instance.position.y += progress * 0.12 * this.worldScale;
-      } else if (time < 1.12) {
-        const progress = (time - 0.56) / 0.56;
-        instance.userData.choreoScale *= 1.48 - progress * 0.08;
-        instance.position.x += Math.sin(progress * Math.PI) * 0.14 * this.worldScale;
-        instance.position.y += (0.12 + progress * 1.72) * this.worldScale;
-        instance.rotation.z += Math.sin(progress * Math.PI * 4) * 0.08;
-      } else if (time < 1.3) {
-        instance.userData.choreoOpacity = 0;
-      } else if (time < 2.08) {
-        const progress = 1 - Math.pow(1 - (time - 1.3) / 0.78, 3);
-        instance.position.x += (1 - progress) * 1.85 * this.worldScale;
-        instance.position.y += (0.2 - progress * 0.12) * this.worldScale;
-        instance.userData.choreoScale *= 0.72 + progress * 0.28;
-        instance.rotation.z += Math.sin(progress * Math.PI * 5) * (1 - progress) * 0.24;
+      if (time < 0.22) {
+        const progress = 1 - Math.pow(1 - time / 0.22, 3);
+        instance.userData.choreoScale *= 1 + progress * 0.42;
+        instance.position.y += progress * 0.08 * this.worldScale;
+      } else if (time < 0.5) {
+        const progress = (time - 0.22) / 0.28;
+        instance.userData.choreoScale *= 1.42 - progress * 0.1;
+        instance.position.x += Math.sin(progress * Math.PI) * 0.1 * this.worldScale;
+        instance.position.y += (0.08 + progress * 1.25) * this.worldScale;
+        instance.rotation.z += Math.sin(progress * Math.PI * 4) * 0.09;
+      } else if (time < 0.94) {
+        const progress = 1 - Math.pow(1 - (time - 0.5) / 0.44, 3);
+        instance.position.x += Math.sin(progress * Math.PI) * -0.08 * this.worldScale;
+        instance.position.y += (1 - progress) * 1.33 * this.worldScale;
+        instance.userData.choreoScale *= 1.32 - progress * 0.32;
+        instance.rotation.z += Math.sin(progress * Math.PI * 5) * (1 - progress) * 0.2;
       } else {
-        const settle = Math.max(0, 1 - (time - 2.08) / 0.45);
-        instance.rotation.z += Math.sin((time - 2.08) * 18) * settle * 0.12;
-        instance.userData.choreoScale *= 1 - Math.sin((time - 2.08) * 12) * settle * 0.035;
+        const settle = Math.max(0, 1 - (time - 0.94) / 0.25);
+        instance.rotation.z += Math.sin((time - 0.94) * 20) * settle * 0.1;
+        instance.userData.choreoScale *= 1 - Math.sin((time - 0.94) * 14) * settle * 0.03;
       }
       return;
     }
