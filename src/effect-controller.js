@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SoundController } from './sound-controller.js?v=20260731-stable-v9';
+import { SoundController } from './sound-controller.js?v=20260801-stable-v10';
 
 const GAME_TOTALS = {
   jellyfish: 5,
@@ -15,7 +15,6 @@ const CELEBRATE_SECONDS = {
 const TURTLE_POLISH_SECONDS = 3;
 const LIGHT_COLLECT_SECONDS = 2;
 const STAMP_SECONDS = 2;
-const STAMP_STORAGE_KEY = 'dreamy-ocean-light-stamps';
 const STAMP_ORDER = ['jellyfish', 'whale', 'turtle'];
 const INTRO_SECONDS = 1;
 
@@ -53,7 +52,9 @@ export class EffectController {
         this.stampImages[key] = image;
       }
     }
-    this.collectedStamps = this.loadCollectedStamps();
+    // スタンプはページを開いている間だけ保持する。
+    // 以前の閲覧状態を引き継ぐと、端末や品質モードによって案内順が変わって見えるため。
+    this.collectedStamps = new Set();
     this.game = this.createGameState(null);
     this.tempWorld = new THREE.Vector3();
     this.tempScale = new THREE.Vector3();
@@ -135,26 +136,8 @@ export class EffectController {
     });
   }
 
-  loadCollectedStamps() {
-    try {
-      const saved = JSON.parse(sessionStorage.getItem(STAMP_STORAGE_KEY) || '[]');
-      return new Set(saved.filter((key) => STAMP_ORDER.includes(key)));
-    } catch {
-      return new Set();
-    }
-  }
-
-  saveCollectedStamps() {
-    try {
-      sessionStorage.setItem(STAMP_STORAGE_KEY, JSON.stringify([...this.collectedStamps]));
-    } catch {
-      // ストレージを利用できないブラウザでも、現在の表示中はスタンプを保持する。
-    }
-  }
-
   clearCollectedStamps() {
     this.collectedStamps.clear();
-    this.saveCollectedStamps();
   }
 
   setPhotoMode(active) {
@@ -311,7 +294,6 @@ export class EffectController {
   awardLightStamp() {
     const key = this.activeKey;
     this.collectedStamps.add(key);
-    this.saveCollectedStamps();
     this.game.phase = 'stamp';
     this.game.stampTime = 0;
     this.game.newStamp = key;
