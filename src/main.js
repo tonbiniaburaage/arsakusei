@@ -1,8 +1,8 @@
-import { AREngine } from './ar-engine.js?v=20260801-stable-v10';
-import { TrackingEngine } from './tracking-engine.js?v=20260801-stable-v10';
-import { EffectController } from './effect-controller.js?v=20260801-stable-v10';
-import { PhotoController } from './photo-controller.js?v=20260801-stable-v10';
-import { CREATURE_ORDER, CREATURES, qualityProfile } from './creature-config.js?v=20260801-stable-v10';
+import { AREngine } from './ar-engine.js?v=20260801-stable-v11';
+import { TrackingEngine } from './tracking-engine.js?v=20260801-stable-v11';
+import { EffectController } from './effect-controller.js?v=20260801-stable-v11';
+import { PhotoController } from './photo-controller.js?v=20260801-stable-v11';
+import { CREATURE_ORDER, CREATURES, qualityProfile } from './creature-config.js?v=20260801-stable-v11';
 
 const stage = document.querySelector('#stage');
 const effectsCanvas = document.querySelector('#effects');
@@ -23,6 +23,7 @@ let trackingMode = false;
 let starting = false;
 let demoSequenceActive = false;
 let demoTransitionTimer = null;
+let autoResetTimer = null;
 
 effects.setGameCallbacks({
   onStateChange({ key, phase, count, total, remaining }) {
@@ -45,6 +46,13 @@ effects.setGameCallbacks({
     if (phase === 'all-complete') status.textContent = '3つの海の光がそろったよ！';
     if (phase === 'finished') status.textContent = 'おしまい';
     handleDemoStateChange(key, phase);
+  },
+  onAutoReset() {
+    if (autoResetTimer) return;
+    autoResetTimer = setTimeout(() => {
+      autoResetTimer = null;
+      restartFromBeginning();
+    }, 0);
   }
 });
 
@@ -83,10 +91,7 @@ function stopDemoSequence() {
 
 function handleDemoStateChange(key, phase) {
   if (!demoSequenceActive) return;
-  if (phase === 'finished') {
-    demoSequenceActive = false;
-    return;
-  }
+  if (phase === 'finished') return;
   if (phase !== 'complete' || demoTransitionTimer) return;
   const currentIndex = CREATURE_ORDER.indexOf(key);
   const nextKey = CREATURE_ORDER[currentIndex + 1];
@@ -186,10 +191,22 @@ function leaveWelcome() {
 }
 
 resetButton.addEventListener('click', () => {
-  engine?.reset?.();
-  if (effects.activeKey) effects.restartGame(effects.activeKey);
-  else status.textContent = 'ゲームを最初からやり直します';
+  if (autoResetTimer) clearTimeout(autoResetTimer);
+  autoResetTimer = null;
+  restartFromBeginning();
 });
+
+function restartFromBeginning() {
+  if (demoSequenceActive) {
+    startDemoSequence();
+    return;
+  }
+
+  const activeKey = effects.activeKey;
+  engine?.reset?.();
+  effects.resetProgress(activeKey);
+  if (!activeKey) status.textContent = '光る模型にスマホを向けて、海の光を集めよう！';
+}
 
 addEventListener('pagehide', () => engine?.stop?.());
 

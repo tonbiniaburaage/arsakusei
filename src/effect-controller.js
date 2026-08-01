@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SoundController } from './sound-controller.js?v=20260801-stable-v10';
+import { SoundController } from './sound-controller.js?v=20260801-stable-v11';
 
 const GAME_TOTALS = {
   jellyfish: 5,
@@ -109,6 +109,8 @@ export class EffectController {
       absorbTime: 0,
       stampTime: 0,
       allClearTime: 0,
+      finishedTime: 0,
+      autoResetRequested: false,
       newStamp: null,
       surpriseChecked: false,
       surpriseUsed: false,
@@ -138,6 +140,20 @@ export class EffectController {
 
   clearCollectedStamps() {
     this.collectedStamps.clear();
+  }
+
+  resetProgress(key = this.activeKey) {
+    this.clearCollectedStamps();
+    this.particles.length = 0;
+    this.elapsed = 0;
+    this.activeElapsed = 0;
+    this.clearCreatureReactions();
+    if (key) {
+      this.activeKey = key;
+      this.restartGame(key);
+    } else {
+      this.reset();
+    }
   }
 
   setPhotoMode(active) {
@@ -277,7 +293,16 @@ export class EffectController {
       this.game.allClearTime += delta;
       if (this.game.allClearTime >= 6.2) {
         this.game.phase = 'finished';
+        this.game.finishedTime = 0;
         this.notifyGame();
+      }
+    }
+
+    if (this.game.phase === 'finished') {
+      this.game.finishedTime += delta;
+      if (this.game.finishedTime >= 3 && !this.game.autoResetRequested) {
+        this.game.autoResetRequested = true;
+        this.gameCallbacks.onAutoReset?.();
       }
     }
   }
