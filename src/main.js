@@ -1,8 +1,8 @@
-import { AREngine } from './ar-engine.js?v=20260801-stable-v11';
-import { TrackingEngine } from './tracking-engine.js?v=20260801-stable-v11';
-import { EffectController } from './effect-controller.js?v=20260801-stable-v11';
-import { PhotoController } from './photo-controller.js?v=20260801-stable-v11';
-import { CREATURE_ORDER, CREATURES, qualityProfile } from './creature-config.js?v=20260801-stable-v11';
+import { AREngine } from './ar-engine.js?v=20260801-stable-v12';
+import { TrackingEngine } from './tracking-engine.js?v=20260801-stable-v12';
+import { EffectController } from './effect-controller.js?v=20260801-stable-v12';
+import { PhotoController } from './photo-controller.js?v=20260801-stable-v12';
+import { CREATURE_ORDER, CREATURES, qualityProfile } from './creature-config.js?v=20260801-stable-v12';
 
 const stage = document.querySelector('#stage');
 const effectsCanvas = document.querySelector('#effects');

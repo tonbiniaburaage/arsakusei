@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SoundController } from './sound-controller.js?v=20260801-stable-v11';
+import { SoundController } from './sound-controller.js?v=20260801-stable-v12';
 
 const GAME_TOTALS = {
   jellyfish: 5,
@@ -8,9 +8,9 @@ const GAME_TOTALS = {
 };
 
 const CELEBRATE_SECONDS = {
-  jellyfish: 2.55,
-  whale: 2.75,
-  turtle: 2.4
+  jellyfish: 1,
+  whale: 1,
+  turtle: 1
 };
 const TURTLE_POLISH_SECONDS = 3;
 const LIGHT_COLLECT_SECONDS = 2;
