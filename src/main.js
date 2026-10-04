@@ -1,6 +1,6 @@
-import { AmbientOcean } from './ambient-ocean.js?v=20261004-interactions2';
+import { AmbientOcean } from './ambient-ocean.js?v=20261004-interactions5';
 import { CameraMotionDetector } from './motion-detector.js?v=20261004-kiosk1';
-import { GestureController } from './gesture-controller.js?v=20261004-interactions2';
+import { GestureController } from './gesture-controller.js?v=20261004-interactions5';
 
 const app = document.querySelector('#app');
 const video = document.querySelector('#camera');
@@ -16,7 +16,6 @@ const context = canvas.getContext('2d');
 const gestureElements = {
   guide: document.querySelector('#gesture-guide'),
   progress: document.querySelector('#gesture-progress'),
-  ghost: document.querySelector('#gesture-ghost'),
   label: document.querySelector('#gesture-label')
 };
 
@@ -39,6 +38,15 @@ const gestures = new GestureController(video, gestureElements, {
   onSpecial({ x, y, direction }) {
     ocean.launchShark(x, y, direction);
     showTemporaryStatus('必殺！サメ・ストリーム！');
+  },
+  onCreatureGesture({ type, x, y }) {
+    if (type === 'garden-eel') {
+      ocean.summonGardenEels(x, y);
+      showTemporaryStatus('ちんあなごが生えてきた！');
+    } else {
+      ocean.summonWalkingCrabs(x, y);
+      showTemporaryStatus('カニたちがお散歩を始めた！');
+    }
   },
   onUnavailable() {
     status.textContent = '魚たちの水中世界をお楽しみください';
@@ -75,17 +83,25 @@ function startPreview() {
   let startedAt = performance.now();
   let previousPhase = '';
   let sharkLaunched = false;
+  let eelLaunched = false;
+  let crabLaunched = false;
   previewTimer = setInterval(() => {
     const elapsed = (performance.now() - startedAt) / 1000;
-    const cycle = elapsed % 13;
+    const cycle = elapsed % 20;
     let phase = 'gather';
     if (cycle >= 3 && cycle < 4.4) phase = 'flow';
     else if (cycle >= 4.4 && cycle < 5.6) phase = 'scatter';
     else if (cycle >= 5.6 && cycle < 8.4) phase = 'vortex';
-    else if (cycle >= 8.4) phase = 'special';
+    else if (cycle >= 8.4 && cycle < 13) phase = 'special';
+    else if (cycle >= 13 && cycle < 16.5) phase = 'garden-eel';
+    else if (cycle >= 16.5) phase = 'crab-walk';
 
     if (phase === 'gather') {
-      if (previousPhase !== phase) sharkLaunched = false;
+      if (previousPhase !== phase) {
+        sharkLaunched = false;
+        eelLaunched = false;
+        crabLaunched = false;
+      }
       const hand = { x: 0.34 + Math.sin(elapsed * 1.4) * 0.08, y: 0.57 + Math.cos(elapsed * 1.1) * 0.05, size: 0.2 };
       ocean.setHandInteraction({ hands: [hand], speed: 0.12 });
       gestureElements.label.textContent = '魚が手に集まっているよ';
@@ -103,13 +119,12 @@ function startPreview() {
       ocean.setHandInteraction({ hands: [hand], speed: 0.8 });
       if (previousPhase !== phase) ocean.startVortex(0.42, 0.55);
       gestureElements.label.textContent = 'ぐるぐる渦潮が発生！';
-    } else {
+    } else if (phase === 'special') {
       const charge = Math.min(1, (cycle - 8.4) / 3);
       ocean.setHandInteraction({
         hands: [{ x: 0.38, y: 0.58, size: 0.2 }, { x: 0.62, y: 0.58, size: 0.2 }],
         charge
       });
-      gestureElements.ghost.textContent = '⚡';
       gestureElements.label.textContent = '両手パワーをためろ！';
       gestureElements.progress.style.setProperty('--progress', `${charge * 100}%`);
       if (charge >= 1 && !sharkLaunched) {
@@ -117,6 +132,20 @@ function startPreview() {
         sharkLaunched = true;
         gestureElements.label.textContent = '必殺！サメ・ストリーム！';
       }
+    } else if (phase === 'garden-eel') {
+      ocean.setHandInteraction({ hands: [{ x: 0.32, y: 0.58, size: 0.2 }], speed: 0 });
+      if (!eelLaunched) {
+        ocean.summonGardenEels(0.32, 0.58);
+        eelLaunched = true;
+      }
+      gestureElements.label.textContent = '人差し指で、ちんあなごを呼ぼう';
+    } else if (phase === 'crab-walk') {
+      ocean.setHandInteraction({ hands: [{ x: 0.68, y: 0.58, size: 0.2 }], speed: 0 });
+      if (!crabLaunched) {
+        ocean.summonWalkingCrabs(0.68, 0.58);
+        crabLaunched = true;
+      }
+      gestureElements.label.textContent = 'ピースで、カニたちがお散歩！';
     }
     previousPhase = phase;
   }, 50);

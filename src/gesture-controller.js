@@ -24,6 +24,9 @@ export class GestureController {
     this.chargeOrigin = null;
     this.specialCooldownUntil = 0;
     this.vortexCooldownUntil = 0;
+    this.gestureCandidate = null;
+    this.gestureHold = 0;
+    this.gestureCooldowns = new Map();
     this.lastUiProgress = '';
   }
 
@@ -91,9 +94,11 @@ export class GestureController {
   }
 
   readHands(result) {
-    return (result?.landmarks || []).map((points) => ({
+    return (result?.landmarks || []).map((points, index) => ({
       ...this.palmCenter(points),
-      size: this.handSize(points)
+      size: this.handSize(points),
+      gesture: result?.gestures?.[index]?.[0]?.categoryName || 'None',
+      gestureScore: result?.gestures?.[index]?.[0]?.score || 0
     }));
   }
 
@@ -103,6 +108,8 @@ export class GestureController {
 
     if (!hands.length) {
       this.missedFrames += 1;
+      this.gestureCandidate = null;
+      this.gestureHold = 0;
       this.twoHandCharge = Math.max(0, this.twoHandCharge - delta * 2.6);
       if (this.twoHandCharge === 0) this.chargeOrigin = null;
       if (this.hadHands && this.missedFrames >= 2) {
@@ -127,36 +134,57 @@ export class GestureController {
     const speed = Math.hypot(this.smoothedVelocity.x, this.smoothedVelocity.y);
     this.previousPrimary = { ...primary };
 
-    if (hands.length >= 2 && now >= this.specialCooldownUntil) {
+    if (hands.length >= 2) {
       this.path.length = 0;
-      this.twoHandCharge = Math.min(1, this.twoHandCharge + delta / SPECIAL_CHARGE_SECONDS);
+      this.gestureCandidate = null;
+      this.gestureHold = 0;
       const midpoint = {
         x: (hands[0].x + hands[1].x) / 2,
         y: (hands[0].y + hands[1].y) / 2
       };
-      if (!this.chargeOrigin) this.chargeOrigin = { ...midpoint };
-      this.updateGuide('⚡', '両手パワーをためろ！', this.twoHandCharge, true);
-      if (this.twoHandCharge >= 1) {
-        const direction = this.chargeDirection(midpoint);
-        this.specialCooldownUntil = now + 3200;
+      if (now < this.specialCooldownUntil) {
         this.twoHandCharge = 0;
         this.chargeOrigin = null;
-        this.callbacks.onSpecial?.({ ...midpoint, direction });
-        this.announce('🦈', '必殺！サメ・ストリーム！');
+        if (!this.elements.guide.classList.contains('is-success')) this.updateGuide('海の力を整えています…', 0, true);
+      } else {
+        this.twoHandCharge = Math.min(1, this.twoHandCharge + delta / SPECIAL_CHARGE_SECONDS);
+        if (!this.chargeOrigin) this.chargeOrigin = { ...midpoint };
+        this.updateGuide('両手パワーをためろ！', this.twoHandCharge, true);
+        if (this.twoHandCharge >= 1) {
+          const direction = this.chargeDirection(midpoint);
+          this.specialCooldownUntil = now + 3200;
+          this.twoHandCharge = 0;
+          this.chargeOrigin = null;
+          this.callbacks.onSpecial?.({ ...midpoint, direction });
+          this.announce('必殺！サメ・ストリーム！');
+        }
       }
     } else {
       this.twoHandCharge = Math.max(0, this.twoHandCharge - delta * 2.4);
       if (this.twoHandCharge === 0) this.chargeOrigin = null;
+      const creatureGesture = this.updateCreatureGesture(primary, delta, now);
       const circle = this.updateCirclePath(primary, now);
-      if (circle.triggered && now >= this.vortexCooldownUntil) {
+      if (creatureGesture) {
+        this.path.length = 0;
+        this.callbacks.onCreatureGesture?.({ type: creatureGesture, x: primary.x, y: primary.y });
+        this.announce(creatureGesture === 'garden-eel' ? 'ちんあなごが生えてきた！' : 'カニたちがお散歩を始めた！');
+      } else if (circle.triggered && now >= this.vortexCooldownUntil) {
         this.vortexCooldownUntil = now + 4200;
         this.path.length = 0;
         this.callbacks.onVortex?.({ x: circle.x, y: circle.y });
-        this.announce('🌀', 'ぐるぐる渦潮が発生！');
+        this.announce('ぐるぐる渦潮が発生！');
       } else if (speed > 0.82) {
-        this.updateGuide('〰', '水流で魚が流される！', Math.min(1, speed / 1.8), false);
+        this.updateGuide('水流で魚が流される！', Math.min(1, speed / 1.8), false);
       } else if (!this.elements.guide.classList.contains('is-success')) {
-        this.updateGuide('✋', circle.progress > 0.28 ? 'そのまま大きくぐるぐる！' : '魚が手に集まっているよ', circle.progress, false);
+        const gestureHint = primary.gesture === 'Pointing_Up'
+          ? '人差し指をそのまま上げてみよう'
+          : primary.gesture === 'Victory'
+            ? 'ピースをそのまま見せてみよう'
+            : circle.progress > 0.28
+              ? 'そのまま大きくぐるぐる！'
+              : '魚が手に集まっているよ';
+        const progress = this.gestureCandidate ? Math.min(1, this.gestureHold / 0.34) : circle.progress;
+        this.updateGuide(gestureHint, progress, false);
       }
     }
 
@@ -191,6 +219,27 @@ export class GestureController {
     return { x: x / length, y: y / length };
   }
 
+  updateCreatureGesture(hand, delta, now) {
+    const supported = hand.gesture === 'Pointing_Up' || hand.gesture === 'Victory';
+    const threshold = hand.gesture === 'Pointing_Up' ? 0.56 : 0.52;
+    if (!supported || hand.gestureScore < threshold) {
+      this.gestureCandidate = null;
+      this.gestureHold = 0;
+      return null;
+    }
+    if (this.gestureCandidate !== hand.gesture) {
+      this.gestureCandidate = hand.gesture;
+      this.gestureHold = delta;
+    } else {
+      this.gestureHold += delta;
+    }
+    const cooldownUntil = this.gestureCooldowns.get(hand.gesture) || 0;
+    if (this.gestureHold < 0.34 || now < cooldownUntil) return null;
+    this.gestureCooldowns.set(hand.gesture, now + 4800);
+    this.gestureHold = 0;
+    return hand.gesture === 'Pointing_Up' ? 'garden-eel' : 'crab-walk';
+  }
+
   updateCirclePath(point, now) {
     this.path.push({ x: point.x, y: point.y, time: now });
     this.path = this.path.filter((sample) => now - sample.time <= CIRCLE_WINDOW_MS);
@@ -217,9 +266,9 @@ export class GestureController {
     return { progress, triggered: Math.abs(angle) >= CIRCLE_TRIGGER_RADIANS && consistency > 0.72, ...center };
   }
 
-  announce(symbol, label) {
+  announce(label) {
     this.elements.guide.classList.add('is-success');
-    this.updateGuide(symbol, label, 1, false);
+    this.updateGuide(label, 1, false);
     setTimeout(() => {
       this.elements.guide.classList.remove('is-success');
       this.showIdleGuide();
@@ -228,13 +277,12 @@ export class GestureController {
 
   showIdleGuide() {
     if (this.elements.guide.classList.contains('is-success')) return;
-    this.updateGuide('✋', '手をかざしてみよう', 0, false);
+    this.updateGuide('手をかざしてみよう', 0, false);
   }
 
-  updateGuide(symbol, label, progress, twoHand) {
+  updateGuide(label, progress, twoHand) {
     this.elements.guide.classList.toggle('is-two-hand', Boolean(twoHand));
     this.elements.guide.classList.toggle('is-tracking', progress > 0);
-    if (this.elements.ghost) this.elements.ghost.textContent = symbol;
     this.elements.label.textContent = label;
     const progressValue = `${Math.round(Math.min(1, progress) * 100)}%`;
     if (progressValue !== this.lastUiProgress) {

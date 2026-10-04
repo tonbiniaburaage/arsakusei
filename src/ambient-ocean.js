@@ -10,6 +10,8 @@ export class AmbientOcean {
     this.bubbles = this.makeBubbles(18);
     this.ripples = [];
     this.summonedCreatures = [];
+    this.gardenEels = [];
+    this.walkingCrabs = [];
     this.sharks = [];
     this.hands = [];
     this.lastHands = [];
@@ -76,6 +78,8 @@ export class AmbientOcean {
     this.drawRingSchool(ctx, width, height, this.swimTime);
     this.drawLaneSchool(ctx, width, height, this.swimTime);
     this.drawDriftSchools(ctx, width, height, this.swimTime);
+    this.drawGardenEels(ctx, width, height, time, delta);
+    this.drawWalkingCrabs(ctx, width, height, time, delta);
     this.drawBubbles(ctx, width, height, time, delta);
     this.drawSummonedCreatures(ctx, width, height, time, delta);
     this.drawSharks(ctx, width, height, time, delta);
@@ -184,6 +188,36 @@ export class AmbientOcean {
       });
     }
     this.reactToMotion(x, y, special ? 1 : 0.78);
+  }
+
+  summonGardenEels(x, y) {
+    for (let index = 0; index < 3; index += 1) {
+      this.gardenEels.push({
+        x: Math.max(0.07, Math.min(0.93, x + (index - 1) * 0.085)),
+        baseY: Math.max(0.78, Math.min(0.94, y + 0.25 + Math.abs(index - 1) * 0.025)),
+        height: 0.085 + this.random() * 0.055,
+        phase: this.random() * TAU,
+        age: 0,
+        life: 9 + this.random() * 2
+      });
+    }
+    this.reactToMotion(x, Math.min(0.92, y + 0.25), 0.72);
+  }
+
+  summonWalkingCrabs(x, y) {
+    for (let index = 0; index < 6; index += 1) {
+      const direction = index % 2 === 0 ? 1 : -1;
+      this.walkingCrabs.push({
+        x: Math.max(0.05, Math.min(0.95, x + (this.random() - 0.5) * 0.22)),
+        y: Math.max(0.45, Math.min(0.9, y + (this.random() - 0.5) * 0.18)),
+        vx: direction * (0.022 + this.random() * 0.028),
+        size: 0.72 + this.random() * 0.45,
+        phase: this.random() * TAU,
+        age: 0,
+        life: 10 + this.random() * 2
+      });
+    }
+    this.reactToMotion(x, y, 0.74);
   }
 
   drawWater(ctx, width, height, time) {
@@ -467,6 +501,93 @@ export class AmbientOcean {
       ctx.fill();
     }
     ctx.globalAlpha = 1;
+  }
+
+  drawGardenEels(ctx, width, height, time, delta) {
+    for (const eel of this.gardenEels) {
+      eel.age += delta;
+      eel.life -= delta;
+      const appear = Math.min(1, eel.age / 0.58);
+      const fade = Math.min(1, eel.life / 0.8);
+      const length = height * eel.height * appear;
+      const sway = Math.sin(time * 1.8 + eel.phase) * length * 0.2;
+      const x = eel.x * width;
+      const y = eel.baseY * height;
+      ctx.save();
+      ctx.globalAlpha = fade * 0.78;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = '#063a58';
+      ctx.lineWidth = Math.max(7, Math.min(width, height) * 0.013);
+      ctx.shadowColor = 'rgba(75, 222, 239, .48)';
+      ctx.shadowBlur = Math.min(width, height) * 0.012;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.bezierCurveTo(x - sway * 0.45, y - length * 0.34, x + sway * 0.62, y - length * 0.72, x + sway, y - length);
+      ctx.stroke();
+      ctx.fillStyle = '#063a58';
+      ctx.beginPath();
+      ctx.ellipse(x + sway, y - length, ctx.lineWidth * 0.68, ctx.lineWidth * 0.82, Math.sin(time + eel.phase) * 0.16, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(202, 249, 255, .76)';
+      ctx.shadowBlur = 0;
+      const eyeY = y - length - ctx.lineWidth * 0.14;
+      ctx.beginPath();
+      ctx.arc(x + sway - ctx.lineWidth * 0.2, eyeY, Math.max(1, ctx.lineWidth * 0.075), 0, TAU);
+      ctx.arc(x + sway + ctx.lineWidth * 0.2, eyeY, Math.max(1, ctx.lineWidth * 0.075), 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(130, 234, 244, .34)';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.ellipse(x, y + 2, ctx.lineWidth * 12, ctx.lineWidth * 4.5, 0, 0, TAU);
+      ctx.stroke();
+      ctx.restore();
+    }
+    this.gardenEels = this.gardenEels.filter((eel) => eel.life > 0);
+  }
+
+  drawWalkingCrabs(ctx, width, height, time, delta) {
+    for (const crab of this.walkingCrabs) {
+      crab.age += delta;
+      crab.life -= delta;
+      crab.x += crab.vx * delta;
+      if (crab.x < -0.08) crab.x = 1.08;
+      if (crab.x > 1.08) crab.x = -0.08;
+      const appear = Math.min(1, crab.age / 0.36);
+      const fade = Math.min(1, crab.life / 0.8);
+      const bounce = Math.abs(Math.sin(time * 5.4 + crab.phase)) * 0.008;
+      const unit = Math.min(width, height) * 0.025 * crab.size * appear;
+      ctx.save();
+      ctx.translate(crab.x * width, (crab.y - bounce) * height);
+      ctx.scale(crab.vx < 0 ? -unit : unit, unit);
+      ctx.globalAlpha = fade * 0.72;
+      ctx.fillStyle = '#062f52';
+      ctx.strokeStyle = '#062f52';
+      ctx.lineWidth = 0.12;
+      ctx.lineCap = 'round';
+      ctx.shadowColor = 'rgba(78, 216, 240, .42)';
+      ctx.shadowBlur = 0.18;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 0.78, 0.48, 0, 0, TAU);
+      ctx.fill();
+      for (const side of [-1, 1]) {
+        for (let index = 0; index < 3; index += 1) {
+          const step = Math.sin(time * 7 + crab.phase + index) * 0.16;
+          ctx.beginPath();
+          ctx.moveTo(side * 0.55, -0.08 + index * 0.22);
+          ctx.lineTo(side * (1.02 + index * 0.08), 0.14 + index * 0.2 + step);
+          ctx.stroke();
+        }
+        ctx.beginPath();
+        ctx.moveTo(side * 0.58, -0.25);
+        ctx.lineTo(side * 1.02, -0.72);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(side * 1.18, -0.75, 0.26, side < 0 ? -0.3 : Math.PI, side < 0 ? Math.PI * 1.28 : Math.PI * 0.28);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    this.walkingCrabs = this.walkingCrabs.filter((crab) => crab.life > 0);
   }
 
   drawSummonedCreatures(ctx, width, height, time, delta) {
