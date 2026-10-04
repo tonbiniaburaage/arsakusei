@@ -1,26 +1,29 @@
 import { FilesetResolver, GestureRecognizer } from '../vendor/mediapipe/vision_bundle.mjs';
-import { GESTURE_DEFINITIONS, GESTURE_SETTINGS } from './gesture-config.js';
 
-const ALLOWED_GESTURES = ['Open_Palm', 'Closed_Fist', 'Victory'];
 const PALM_LANDMARKS = [0, 5, 9, 13, 17];
-const FINGER_PAIRS = [[8, 6], [12, 10], [16, 14], [20, 18]];
+const SAMPLE_INTERVAL_MS = 52;
+const CIRCLE_WINDOW_MS = 1450;
+const CIRCLE_TRIGGER_RADIANS = Math.PI * 1.52;
+const SPECIAL_CHARGE_SECONDS = 1.25;
 
 export class GestureController {
   constructor(video, elements, callbacks = {}) {
     this.video = video;
     this.elements = elements;
     this.callbacks = callbacks;
-    this.settings = GESTURE_SETTINGS;
     this.recognizer = null;
     this.timer = null;
     this.lastVideoTime = -1;
     this.lastSampleAt = performance.now();
-    this.history = [];
-    this.active = null;
-    this.cooldownUntil = 0;
-    this.guideIndex = 0;
-    this.guideChangedAt = performance.now();
-    this.lastUiProgress = -1;
+    this.previousPrimary = null;
+    this.smoothedVelocity = { x: 0, y: 0 };
+    this.path = [];
+    this.hadHands = false;
+    this.missedFrames = 0;
+    this.twoHandCharge = 0;
+    this.specialCooldownUntil = 0;
+    this.vortexCooldownUntil = 0;
+    this.lastUiProgress = '';
   }
 
   async start() {
@@ -28,16 +31,17 @@ export class GestureController {
     this.stopTimer();
     this.lastVideoTime = -1;
     this.lastSampleAt = performance.now();
-    this.timer = setInterval(() => this.sample(), this.settings.inferenceIntervalMs);
-    this.showIdleGuide(true);
+    this.timer = setInterval(() => this.sample(), SAMPLE_INTERVAL_MS);
+    this.showIdleGuide();
   }
 
   stop() {
     this.stopTimer();
     this.recognizer?.close?.();
     this.recognizer = null;
-    this.history.length = 0;
-    this.active = null;
+    this.path.length = 0;
+    this.previousPrimary = null;
+    this.hadHands = false;
   }
 
   stopTimer() {
@@ -52,19 +56,15 @@ export class GestureController {
     const options = {
       baseOptions: { modelAssetPath: modelPath, delegate: 'GPU' },
       runningMode: 'VIDEO',
-      numHands: this.settings.maxHands,
-      minHandDetectionConfidence: 0.45,
-      minHandPresenceConfidence: 0.45,
-      minTrackingConfidence: 0.45,
-      cannedGesturesClassifierOptions: {
-        scoreThreshold: 0.38,
-        categoryAllowlist: ALLOWED_GESTURES
-      }
+      numHands: 2,
+      minHandDetectionConfidence: 0.42,
+      minHandPresenceConfidence: 0.42,
+      minTrackingConfidence: 0.42
     };
     try {
       return await GestureRecognizer.createFromOptions(vision, options);
     } catch (error) {
-      console.warn('GPUで手ジェスチャー認識を開始できないためCPUに切り替えます。', error);
+      console.warn('GPUで手認識を開始できないためCPUに切り替えます。', error);
       return GestureRecognizer.createFromOptions(vision, {
         ...options,
         baseOptions: { modelAssetPath: modelPath, delegate: 'CPU' }
@@ -81,144 +81,142 @@ export class GestureController {
     try {
       result = this.recognizer.recognizeForVideo(this.video, now);
     } catch (error) {
-      console.warn('手ジェスチャーの認識を継続できません。', error);
+      console.warn('手の認識を継続できません。', error);
       this.callbacks.onUnavailable?.(error);
       this.stopTimer();
       return;
     }
-    const candidate = this.readCandidate(result);
-    this.updateStability(candidate, now);
+    this.update(this.readHands(result), now);
   }
 
-  readCandidate(result) {
-    const landmarks = result?.landmarks || [];
-    const gestures = result?.gestures || [];
-    const hands = landmarks.map((points, index) => ({
-      points,
-      center: this.palmCenter(points),
-      size: this.handSize(points),
-      gesture: gestures[index]?.[0]?.categoryName || 'None',
-      score: gestures[index]?.[0]?.score || 0
+  readHands(result) {
+    return (result?.landmarks || []).map((points) => ({
+      ...this.palmCenter(points),
+      size: this.handSize(points)
     }));
-
-    const doubleHand = this.readTwoHandCandidate(hands);
-    if (doubleHand) return doubleHand;
-
-    let best = null;
-    for (const hand of hands) {
-      if (!this.inRoi(hand.center, this.settings.singleHandRoi)) continue;
-      if (!ALLOWED_GESTURES.includes(hand.gesture)) continue;
-      if (hand.score < this.settings.confidence[hand.gesture]) continue;
-      if (!best || hand.score > best.confidence) {
-        best = { key: hand.gesture, position: hand.center, confidence: hand.score };
-      }
-    }
-    return best;
   }
 
-  readTwoHandCandidate(hands) {
-    if (hands.length < 2) return null;
-    const [first, second] = hands;
-    if (this.extendedFingerCount(first.points) < this.settings.twoHand.minExtendedFingers) return null;
-    if (this.extendedFingerCount(second.points) < this.settings.twoHand.minExtendedFingers) return null;
-    const midpoint = {
-      x: (first.center.x + second.center.x) / 2,
-      y: (first.center.y + second.center.y) / 2
-    };
-    if (!this.inRoi(midpoint, this.settings.twoHandRoi)) return null;
-    const distance = Math.hypot(first.center.x - second.center.x, first.center.y - second.center.y);
-    const averageSize = Math.max(0.001, (first.size + second.size) / 2);
-    const normalizedDistance = distance / averageSize;
-    if (normalizedDistance < this.settings.twoHand.minNormalizedDistance) return null;
-    if (normalizedDistance > this.settings.twoHand.maxNormalizedDistance) return null;
-    return { key: 'Two_Hand_Crab', position: midpoint, confidence: 0.9 };
-  }
-
-  updateStability(candidate, now) {
-    const delta = Math.min(0.2, Math.max(0, (now - this.lastSampleAt) / 1000));
+  update(hands, now) {
+    const delta = Math.min(0.18, Math.max(0.016, (now - this.lastSampleAt) / 1000));
     this.lastSampleAt = now;
-    this.history.push(candidate?.key || null);
-    if (this.history.length > this.settings.historySize) this.history.shift();
 
-    if (now < this.cooldownUntil) {
-      this.active = null;
-      this.updateGuide(null, 0, true);
-      return;
-    }
-
-    if (candidate) {
-      if (!this.active) {
-        this.active = { ...candidate, hold: delta };
-      } else if (this.active.key === candidate.key) {
-        this.active.hold += delta;
-        this.active.position.x += (candidate.position.x - this.active.position.x) * 0.28;
-        this.active.position.y += (candidate.position.y - this.active.position.y) * 0.28;
-        this.active.confidence = candidate.confidence;
-      } else {
-        this.active.hold = Math.max(0, this.active.hold - delta * 0.72);
-        if (this.active.hold === 0) this.active = { ...candidate, hold: delta };
+    if (!hands.length) {
+      this.missedFrames += 1;
+      this.twoHandCharge = Math.max(0, this.twoHandCharge - delta * 2.6);
+      if (this.hadHands && this.missedFrames >= 2) {
+        this.hadHands = false;
+        this.callbacks.onHandsLost?.(this.previousPrimary);
+        this.previousPrimary = null;
+        this.path.length = 0;
       }
-    } else if (this.active) {
-      this.active.hold = Math.max(0, this.active.hold - delta * this.settings.progressDecay);
-      if (this.active.hold === 0) this.active = null;
-    }
-
-    if (!this.active) {
+      this.callbacks.onInteraction?.({ hands: [], velocity: { x: 0, y: 0 }, speed: 0, charge: this.twoHandCharge });
       this.showIdleGuide();
       return;
     }
 
-    const votes = this.history.filter((key) => key === this.active.key).length;
-    const holdTarget = this.settings.holdSeconds[this.active.key];
-    const progress = Math.min(1, votes / this.settings.requiredVotes, this.active.hold / holdTarget);
-    this.updateGuide(this.active.key, progress, false);
+    this.missedFrames = 0;
+    this.hadHands = true;
+    const primary = this.choosePrimary(hands);
+    const rawVelocity = this.previousPrimary
+      ? { x: (primary.x - this.previousPrimary.x) / delta, y: (primary.y - this.previousPrimary.y) / delta }
+      : { x: 0, y: 0 };
+    this.smoothedVelocity.x += (rawVelocity.x - this.smoothedVelocity.x) * 0.46;
+    this.smoothedVelocity.y += (rawVelocity.y - this.smoothedVelocity.y) * 0.46;
+    const speed = Math.hypot(this.smoothedVelocity.x, this.smoothedVelocity.y);
+    this.previousPrimary = { ...primary };
 
-    if (votes >= this.settings.requiredVotes && this.active.hold >= holdTarget) {
-      this.trigger(this.active, now);
+    if (hands.length >= 2 && now >= this.specialCooldownUntil) {
+      this.path.length = 0;
+      this.twoHandCharge = Math.min(1, this.twoHandCharge + delta / SPECIAL_CHARGE_SECONDS);
+      const midpoint = {
+        x: (hands[0].x + hands[1].x) / 2,
+        y: (hands[0].y + hands[1].y) / 2
+      };
+      this.updateGuide('⚡', '両手パワーをためろ！', this.twoHandCharge, true);
+      if (this.twoHandCharge >= 1) {
+        this.specialCooldownUntil = now + 3200;
+        this.twoHandCharge = 0;
+        this.callbacks.onSpecial?.(midpoint);
+        this.announce('🦈', '必殺！サメ・ストリーム！');
+      }
+    } else {
+      this.twoHandCharge = Math.max(0, this.twoHandCharge - delta * 2.4);
+      const circle = this.updateCirclePath(primary, now);
+      if (circle.triggered && now >= this.vortexCooldownUntil) {
+        this.vortexCooldownUntil = now + 4200;
+        this.path.length = 0;
+        this.callbacks.onVortex?.({ x: circle.x, y: circle.y });
+        this.announce('🌀', 'ぐるぐる渦潮が発生！');
+      } else if (speed > 0.82) {
+        this.updateGuide('〰', '水流で魚が流される！', Math.min(1, speed / 1.8), false);
+      } else if (!this.elements.guide.classList.contains('is-success')) {
+        this.updateGuide('✋', circle.progress > 0.28 ? 'そのまま大きくぐるぐる！' : '魚が手に集まっているよ', circle.progress, false);
+      }
     }
+
+    this.callbacks.onInteraction?.({
+      hands,
+      velocity: this.smoothedVelocity,
+      speed,
+      charge: this.twoHandCharge
+    });
   }
 
-  trigger(active, now) {
-    const definition = GESTURE_DEFINITIONS[active.key];
-    this.cooldownUntil = now + this.settings.cooldownMs;
-    this.history.length = 0;
-    this.active = null;
+  choosePrimary(hands) {
+    if (!this.previousPrimary || hands.length === 1) return hands[0];
+    return hands.reduce((nearest, hand) => {
+      const distance = Math.hypot(hand.x - this.previousPrimary.x, hand.y - this.previousPrimary.y);
+      const nearestDistance = Math.hypot(nearest.x - this.previousPrimary.x, nearest.y - this.previousPrimary.y);
+      return distance < nearestDistance ? hand : nearest;
+    }, hands[0]);
+  }
+
+  updateCirclePath(point, now) {
+    this.path.push({ x: point.x, y: point.y, time: now });
+    this.path = this.path.filter((sample) => now - sample.time <= CIRCLE_WINDOW_MS);
+    if (this.path.length < 9) return { progress: 0, triggered: false, x: point.x, y: point.y };
+
+    const center = this.path.reduce((sum, sample) => ({ x: sum.x + sample.x, y: sum.y + sample.y }), { x: 0, y: 0 });
+    center.x /= this.path.length;
+    center.y /= this.path.length;
+    const radii = this.path.map((sample) => Math.hypot(sample.x - center.x, sample.y - center.y));
+    const averageRadius = radii.reduce((sum, radius) => sum + radius, 0) / radii.length;
+    if (averageRadius < 0.055 || averageRadius > 0.34) return { progress: 0, triggered: false, ...center };
+
+    let angle = 0;
+    for (let index = 1; index < this.path.length; index += 1) {
+      const previous = Math.atan2(this.path[index - 1].y - center.y, this.path[index - 1].x - center.x);
+      const current = Math.atan2(this.path[index].y - center.y, this.path[index].x - center.x);
+      let difference = current - previous;
+      if (difference > Math.PI) difference -= Math.PI * 2;
+      if (difference < -Math.PI) difference += Math.PI * 2;
+      angle += difference;
+    }
+    const consistency = radii.filter((radius) => Math.abs(radius - averageRadius) < averageRadius * 0.72).length / radii.length;
+    const progress = Math.min(1, Math.abs(angle) / CIRCLE_TRIGGER_RADIANS) * consistency;
+    return { progress, triggered: Math.abs(angle) >= CIRCLE_TRIGGER_RADIANS && consistency > 0.72, ...center };
+  }
+
+  announce(symbol, label) {
     this.elements.guide.classList.add('is-success');
-    this.elements.ghost.textContent = definition.symbol;
-    this.elements.label.textContent = definition.success;
-    this.elements.progress.style.setProperty('--progress', '360deg');
-    this.callbacks.onSummon?.({
-      type: definition.creature,
-      x: active.position.x,
-      y: active.position.y,
-      special: Boolean(definition.special),
-      label: definition.success
-    });
+    this.updateGuide(symbol, label, 1, false);
     setTimeout(() => {
       this.elements.guide.classList.remove('is-success');
-      this.showIdleGuide(true);
-    }, 1450);
+      this.showIdleGuide();
+    }, 1350);
   }
 
-  showIdleGuide(force = false) {
-    const now = performance.now();
-    const keys = ['Open_Palm', 'Closed_Fist', 'Victory', 'Two_Hand_Crab'];
-    if (force || now - this.guideChangedAt > 4200) {
-      this.guideIndex = force ? 0 : (this.guideIndex + 1) % keys.length;
-      this.guideChangedAt = now;
-    }
-    this.updateGuide(keys[this.guideIndex], 0, false, true);
+  showIdleGuide() {
+    if (this.elements.guide.classList.contains('is-success')) return;
+    this.updateGuide('✋', '手をかざしてみよう', 0, false);
   }
 
-  updateGuide(key, progress, coolingDown = false, idle = false) {
-    const definition = GESTURE_DEFINITIONS[key] || GESTURE_DEFINITIONS.Open_Palm;
-    const isTwoHand = key === 'Two_Hand_Crab';
-    this.elements.guide.classList.toggle('is-two-hand', isTwoHand);
-    this.elements.guide.classList.toggle('is-tracking', !idle && !coolingDown && progress > 0);
-    this.elements.guide.classList.toggle('is-cooling-down', coolingDown);
-    this.elements.ghost.textContent = definition.symbol;
-    this.elements.label.textContent = coolingDown ? '海のなかまが合流中…' : definition.prompt;
-    const progressDegrees = `${Math.round(progress * 360)}deg`;
+  updateGuide(symbol, label, progress, twoHand) {
+    this.elements.guide.classList.toggle('is-two-hand', Boolean(twoHand));
+    this.elements.guide.classList.toggle('is-tracking', progress > 0);
+    this.elements.ghost.textContent = symbol;
+    this.elements.label.textContent = label;
+    const progressDegrees = `${Math.round(Math.min(1, progress) * 360)}deg`;
     if (progressDegrees !== this.lastUiProgress) {
       this.elements.progress.style.setProperty('--progress', progressDegrees);
       this.lastUiProgress = progressDegrees;
@@ -246,22 +244,5 @@ export class GestureController {
       maxY = Math.max(maxY, point.y);
     }
     return Math.hypot(maxX - minX, maxY - minY);
-  }
-
-  extendedFingerCount(points) {
-    const wrist = points[0];
-    if (!wrist) return 0;
-    return FINGER_PAIRS.reduce((count, [tipIndex, pipIndex]) => {
-      const tip = points[tipIndex];
-      const pip = points[pipIndex];
-      if (!tip || !pip) return count;
-      const tipDistance = Math.hypot(tip.x - wrist.x, tip.y - wrist.y);
-      const pipDistance = Math.hypot(pip.x - wrist.x, pip.y - wrist.y);
-      return count + (tipDistance > pipDistance * 1.14 ? 1 : 0);
-    }, 0);
-  }
-
-  inRoi(point, roi) {
-    return point.x >= roi.xMin && point.x <= roi.xMax && point.y >= roi.yMin && point.y <= roi.yMax;
   }
 }

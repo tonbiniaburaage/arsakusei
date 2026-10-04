@@ -1,6 +1,6 @@
-import { AmbientOcean } from './ambient-ocean.js?v=20261004-gestures1';
+import { AmbientOcean } from './ambient-ocean.js?v=20261004-interactions1';
 import { CameraMotionDetector } from './motion-detector.js?v=20261004-kiosk1';
-import { GestureController } from './gesture-controller.js?v=20261004-gestures1';
+import { GestureController } from './gesture-controller.js?v=20261004-interactions1';
 
 const app = document.querySelector('#app');
 const video = document.querySelector('#camera');
@@ -25,13 +25,20 @@ const motion = new CameraMotionDetector(video, ({ x, y, intensity }) => {
   ocean.reactToMotion(x, y, intensity);
 });
 const gestures = new GestureController(video, gestureElements, {
-  onSummon({ type, x, y, special, label }) {
-    ocean.summonCreature(type, x, y, { special });
-    status.textContent = label;
-    clearTimeout(gestureStatusTimer);
-    gestureStatusTimer = setTimeout(() => {
-      status.textContent = '手のポーズで海のなかまを呼んでみよう';
-    }, 1800);
+  onInteraction(state) {
+    ocean.setHandInteraction(state);
+  },
+  onHandsLost(position) {
+    ocean.releaseHands(position);
+    showTemporaryStatus('魚たちがびっくりして散らばった！');
+  },
+  onVortex({ x, y }) {
+    ocean.startVortex(x, y);
+    showTemporaryStatus('ぐるぐる渦潮が発生！');
+  },
+  onSpecial({ x, y }) {
+    ocean.launchShark(x, y);
+    showTemporaryStatus('必殺！サメ・ストリーム！');
   },
   onUnavailable() {
     status.textContent = '魚たちの水中世界をお楽しみください';
@@ -63,22 +70,61 @@ function startPreview() {
   setup.hidden = true;
   app.classList.remove('is-starting');
   app.classList.add('is-running');
-  status.textContent = 'ジェスチャー召喚のプレビュー';
-  const samples = [
-    { type: 'octopus', x: 0.25, y: 0.7, label: 'タコのなかまが現れた！' },
-    { type: 'puffer', x: 0.3, y: 0.66, label: 'フグのなかまがふくらんだ！' },
-    { type: 'crab', x: 0.27, y: 0.72, label: 'カニのなかまが現れた！' },
-    { type: 'crab', x: 0.5, y: 0.68, special: true, label: '大きなカニが現れた！' }
-  ];
-  let index = 0;
-  const summonNext = () => {
-    const sample = samples[index % samples.length];
-    ocean.summonCreature(sample.type, sample.x, sample.y, { special: sample.special });
-    status.textContent = sample.label;
-    index += 1;
-  };
-  summonNext();
-  previewTimer = setInterval(summonNext, 3200);
+  gestureElements.guide.hidden = false;
+  status.textContent = 'インタラクション・プレビュー';
+  let startedAt = performance.now();
+  let previousPhase = '';
+  let sharkLaunched = false;
+  previewTimer = setInterval(() => {
+    const elapsed = (performance.now() - startedAt) / 1000;
+    const cycle = elapsed % 13;
+    let phase = 'gather';
+    if (cycle >= 3 && cycle < 4.4) phase = 'flow';
+    else if (cycle >= 4.4 && cycle < 5.6) phase = 'scatter';
+    else if (cycle >= 5.6 && cycle < 8.4) phase = 'vortex';
+    else if (cycle >= 8.4) phase = 'special';
+
+    if (phase === 'gather') {
+      if (previousPhase !== phase) sharkLaunched = false;
+      const hand = { x: 0.34 + Math.sin(elapsed * 1.4) * 0.08, y: 0.57 + Math.cos(elapsed * 1.1) * 0.05, size: 0.2 };
+      ocean.setHandInteraction({ hands: [hand], speed: 0.12 });
+      gestureElements.ghost.textContent = '✋';
+      gestureElements.label.textContent = '魚が手に集まっているよ';
+    } else if (phase === 'flow') {
+      const hand = { x: 0.2 + (cycle - 3) * 0.45, y: 0.55, size: 0.2 };
+      ocean.setHandInteraction({ hands: [hand], velocity: { x: 1.3, y: 0 }, speed: 1.3 });
+      gestureElements.ghost.textContent = '〰';
+      gestureElements.label.textContent = '水流で魚が流される！';
+    } else if (phase === 'scatter') {
+      ocean.setHandInteraction({ hands: [] });
+      if (previousPhase !== phase) ocean.releaseHands({ x: 0.72, y: 0.55 });
+      gestureElements.ghost.textContent = '✋';
+      gestureElements.label.textContent = '手をかざしてみよう';
+    } else if (phase === 'vortex') {
+      const angle = (cycle - 5.6) * 4.2;
+      const hand = { x: 0.42 + Math.cos(angle) * 0.13, y: 0.55 + Math.sin(angle) * 0.13, size: 0.2 };
+      ocean.setHandInteraction({ hands: [hand], speed: 0.8 });
+      if (previousPhase !== phase) ocean.startVortex(0.42, 0.55);
+      gestureElements.ghost.textContent = '🌀';
+      gestureElements.label.textContent = 'ぐるぐる渦潮が発生！';
+    } else {
+      const charge = Math.min(1, (cycle - 8.4) / 1.8);
+      ocean.setHandInteraction({
+        hands: [{ x: 0.38, y: 0.58, size: 0.2 }, { x: 0.62, y: 0.58, size: 0.2 }],
+        charge
+      });
+      gestureElements.ghost.textContent = '⚡';
+      gestureElements.label.textContent = '両手パワーをためろ！';
+      gestureElements.progress.style.setProperty('--progress', `${charge * 360}deg`);
+      if (charge >= 1 && !sharkLaunched) {
+        ocean.launchShark(0.5, 0.58);
+        sharkLaunched = true;
+        gestureElements.ghost.textContent = '🦈';
+        gestureElements.label.textContent = '必殺！サメ・ストリーム！';
+      }
+    }
+    previousPhase = phase;
+  }, 50);
 }
 
 async function startCamera(automatic) {
@@ -109,7 +155,7 @@ async function startCamera(automatic) {
     setup.classList.add('is-hidden');
     setTimeout(() => { setup.hidden = true; }, 580);
     gestures.start().then(() => {
-      status.textContent = '手のポーズで海のなかまを呼んでみよう';
+      status.textContent = '手を動かして魚たちと遊んでみよう';
     }).catch((error) => {
       console.warn('手ジェスチャー認識を初期化できません。', error);
       status.textContent = '魚たちの水中世界をお楽しみください';
@@ -136,6 +182,14 @@ function stopCamera() {
   if (previewTimer) clearInterval(previewTimer);
   stream?.getTracks().forEach((track) => track.stop());
   stream = null;
+}
+
+function showTemporaryStatus(message) {
+  status.textContent = message;
+  clearTimeout(gestureStatusTimer);
+  gestureStatusTimer = setTimeout(() => {
+    status.textContent = '手を動かして魚たちと遊んでみよう';
+  }, 1600);
 }
 
 function resize() {

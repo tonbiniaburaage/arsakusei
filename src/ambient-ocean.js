@@ -9,6 +9,15 @@ export class AmbientOcean {
     this.bubbles = this.makeBubbles(18);
     this.ripples = [];
     this.summonedCreatures = [];
+    this.sharks = [];
+    this.hands = [];
+    this.lastHands = [];
+    this.handVelocity = { x: 0, y: 0 };
+    this.handCharge = 0;
+    this.current = { x: 0, y: 0, strength: 0 };
+    this.vortex = null;
+    this.specialFlash = 0;
+    this.interactionLockout = 0;
     this.motionBoost = 0;
     this.swimTime = 0;
   }
@@ -43,16 +52,86 @@ export class AmbientOcean {
   draw(ctx, width, height, time, delta) {
     if (!width || !height) return;
     this.motionBoost = Math.max(0, this.motionBoost - delta * 0.72);
+    this.frameDelta = delta;
+    this.updateInteractionState(delta);
     this.swimTime += delta * (1 + this.motionBoost * 1.65);
     ctx.save();
     this.drawWater(ctx, width, height, time);
+    this.drawHandFields(ctx, width, height, time);
     this.drawSweepSchool(ctx, width, height, this.swimTime);
     this.drawRingSchool(ctx, width, height, this.swimTime);
     this.drawLaneSchool(ctx, width, height, this.swimTime);
     this.drawBubbles(ctx, width, height, time, delta);
     this.drawSummonedCreatures(ctx, width, height, time, delta);
+    this.drawSharks(ctx, width, height, time, delta);
     this.drawMotionRipples(ctx, width, height, delta);
+    this.drawSpecialFlash(ctx, width, height);
     ctx.restore();
+  }
+
+  setHandInteraction({ hands = [], velocity = { x: 0, y: 0 }, speed = 0, charge = 0 } = {}) {
+    if (this.interactionLockout > 0) return;
+    this.lastHands = this.hands.length ? this.hands : this.lastHands;
+    this.hands = hands.map((hand) => ({ x: hand.x, y: hand.y, size: hand.size || 0.18 }));
+    this.handVelocity.x += (velocity.x - this.handVelocity.x) * 0.46;
+    this.handVelocity.y += (velocity.y - this.handVelocity.y) * 0.46;
+    this.handCharge += (charge - this.handCharge) * 0.38;
+    if (speed > 0.48) {
+      this.current.x = this.handVelocity.x;
+      this.current.y = this.handVelocity.y;
+      this.current.strength = Math.min(1, speed * 0.7);
+      this.motionBoost = Math.max(this.motionBoost, Math.min(1, speed * 0.45));
+    }
+  }
+
+  releaseHands(position) {
+    const origin = position || this.lastHands[0] || { x: 0.5, y: 0.55 };
+    this.hands = [];
+    this.lastHands = [origin];
+    for (const fish of [...this.sweepFish, ...this.ringFish, ...this.laneFish]) {
+      const angle = Math.atan2((fish.lastY ?? this.random()) - origin.y, (fish.lastX ?? this.random()) - origin.x);
+      const kick = 0.14 + this.random() * 0.13;
+      fish.ivx = (fish.ivx || 0) + Math.cos(angle) * kick;
+      fish.ivy = (fish.ivy || 0) + Math.sin(angle) * kick;
+    }
+    this.reactToMotion(origin.x, origin.y, 0.9);
+  }
+
+  startVortex(x, y) {
+    this.vortex = { x, y, age: 0, life: 4.2, strength: 1 };
+    this.reactToMotion(x, y, 1);
+  }
+
+  launchShark(x = 0.5, y = 0.55) {
+    const fromLeft = x > 0.5;
+    this.sharks.push({
+      x: fromLeft ? -0.28 : 1.28,
+      y: Math.max(0.25, Math.min(0.75, y)),
+      direction: fromLeft ? 1 : -1,
+      age: 0,
+      life: 2.25,
+      phase: this.random() * TAU
+    });
+    this.specialFlash = 1;
+    this.interactionLockout = 1.65;
+    this.current.x = fromLeft ? 1.35 : -1.35;
+    this.current.y = 0;
+    this.current.strength = 1.35;
+    this.releaseHands({ x, y });
+  }
+
+  updateInteractionState(delta) {
+    this.current.strength = Math.max(0, this.current.strength - delta * 1.15);
+    this.handVelocity.x *= Math.pow(0.12, delta);
+    this.handVelocity.y *= Math.pow(0.12, delta);
+    this.specialFlash = Math.max(0, this.specialFlash - delta * 1.8);
+    this.interactionLockout = Math.max(0, this.interactionLockout - delta);
+    if (this.vortex) {
+      this.vortex.age += delta;
+      this.vortex.life -= delta;
+      this.vortex.strength = Math.min(1, this.vortex.age / 0.45) * Math.min(1, this.vortex.life / 0.8);
+      if (this.vortex.life <= 0) this.vortex = null;
+    }
   }
 
   reactToMotion(x, y, intensity = 0.5) {
@@ -112,6 +191,72 @@ export class AmbientOcean {
     ctx.globalCompositeOperation = 'source-over';
   }
 
+  drawHandFields(ctx, width, height, time) {
+    if (!this.hands.length && !this.vortex) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    for (const hand of this.hands) {
+      const x = hand.x * width;
+      const y = hand.y * height;
+      const pulse = 1 + Math.sin(time * 5.2) * 0.07;
+      const radius = Math.min(width, height) * (0.085 + this.handCharge * 0.045) * pulse;
+      const glow = ctx.createRadialGradient(x, y, 0, x, y, radius);
+      glow.addColorStop(0, `rgba(230, 255, 255, ${0.2 + this.handCharge * 0.2})`);
+      glow.addColorStop(0.38, `rgba(88, 232, 255, ${0.13 + this.handCharge * 0.12})`);
+      glow.addColorStop(1, 'rgba(47, 140, 255, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = `rgba(187, 250, 255, ${0.26 + this.handCharge * 0.4})`;
+      ctx.lineWidth = 1.5 + this.handCharge * 2;
+      ctx.beginPath();
+      ctx.arc(x, y, radius * (0.62 + Math.sin(time * 3.1) * 0.05), 0, TAU);
+      ctx.stroke();
+    }
+
+    if (this.hands.length === 2 && this.handCharge > 0.02) {
+      const first = this.hands[0];
+      const second = this.hands[1];
+      const centerX = (first.x + second.x) * width * 0.5;
+      const centerY = (first.y + second.y) * height * 0.5;
+      const radius = Math.min(width, height) * (0.025 + this.handCharge * 0.075);
+      const core = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+      core.addColorStop(0, `rgba(255,255,255,${0.65 + this.handCharge * 0.3})`);
+      core.addColorStop(0.26, 'rgba(103,245,255,.72)');
+      core.addColorStop(1, 'rgba(73,103,255,0)');
+      ctx.fillStyle = core;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius, 0, TAU);
+      ctx.fill();
+      for (let index = 0; index < 7; index += 1) {
+        const angle = time * (1.8 + this.handCharge) + index / 7 * TAU;
+        const orbit = radius * (0.65 + index % 3 * 0.22);
+        ctx.fillStyle = index % 2 ? '#b7f9ff' : '#b8a9ff';
+        ctx.globalAlpha = 0.28 + this.handCharge * 0.55;
+        ctx.beginPath();
+        ctx.arc(centerX + Math.cos(angle) * orbit, centerY + Math.sin(angle) * orbit, 2 + this.handCharge * 3, 0, TAU);
+        ctx.fill();
+      }
+    }
+
+    if (this.vortex) {
+      const x = this.vortex.x * width;
+      const y = this.vortex.y * height;
+      const base = Math.min(width, height) * (0.08 + this.vortex.strength * 0.13);
+      for (let index = 0; index < 5; index += 1) {
+        const radiusX = base * (0.45 + index * 0.22);
+        const radiusY = radiusX * 0.42;
+        ctx.strokeStyle = `rgba(${130 + index * 18}, ${220 + index * 5}, 255, ${0.5 - index * 0.065})`;
+        ctx.lineWidth = Math.max(1, base * 0.025);
+        ctx.beginPath();
+        ctx.ellipse(x, y, radiusX, radiusY, time * 0.8 + index * 0.36, 0.2, TAU - 0.35);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
   drawSweepSchool(ctx, width, height, time) {
     const travel = ((time * 0.027) % 1.42) - 0.24;
     for (const fish of this.sweepFish) {
@@ -121,7 +266,8 @@ export class AmbientOcean {
       const arc = Math.pow((fish.u - 0.48) * 2, 2);
       const y = 0.27 + arc * 0.18 + fish.offset * 0.032 + Math.sin(time * 0.55 + fish.phase) * 0.009;
       const slope = (fish.u - 0.48) * 0.72;
-      this.drawFish(ctx, x * width, y * height, Math.atan2(slope, 1), Math.min(width, height) * 0.026 * fish.size, fish.tone, 0.40);
+      const moved = this.moveFish(fish, x, y, this.frameDelta || 1 / 60);
+      this.drawFish(ctx, moved.x * width, moved.y * height, Math.atan2(slope + moved.vy * 1.7, 1 + moved.vx * 1.7), Math.min(width, height) * 0.026 * fish.size, fish.tone, 0.40);
     }
   }
 
@@ -135,7 +281,8 @@ export class AmbientOcean {
       const x = centerX + Math.cos(angle) * radiusX;
       const y = centerY + Math.sin(angle) * radiusY;
       const direction = Math.atan2(Math.cos(angle) * radiusY, -Math.sin(angle) * radiusX);
-      this.drawFish(ctx, x, y, direction, Math.min(width, height) * 0.021 * fish.size, fish.tone, 0.44);
+      const moved = this.moveFish(fish, x / width, y / height, this.frameDelta || 1 / 60);
+      this.drawFish(ctx, moved.x * width, moved.y * height, direction + Math.atan2(moved.vy, Math.max(0.2, 1 + moved.vx)), Math.min(width, height) * 0.021 * fish.size, fish.tone, 0.44);
     }
   }
 
@@ -146,16 +293,73 @@ export class AmbientOcean {
       if (x > 1.18) x -= 1.55;
       const y = 0.72 + fish.offset * 0.055 + Math.sin(time * 0.42 + fish.phase) * 0.012;
       const near = fish.index === this.laneFish.length - 1;
+      const moved = this.moveFish(fish, x, y, this.frameDelta || 1 / 60);
       this.drawFish(
         ctx,
-        x * width,
-        y * height,
-        Math.sin(time * 0.35 + fish.phase) * 0.07,
+        moved.x * width,
+        moved.y * height,
+        Math.sin(time * 0.35 + fish.phase) * 0.07 + Math.atan2(moved.vy, Math.max(0.2, 1 + moved.vx)),
         Math.min(width, height) * (near ? 0.042 : 0.027) * fish.size,
         fish.tone,
         near ? 0.34 : 0.40
       );
     }
+  }
+
+  moveFish(fish, baseX, baseY, delta) {
+    fish.ix ??= 0;
+    fish.iy ??= 0;
+    fish.ivx ??= 0;
+    fish.ivy ??= 0;
+    const x = baseX + fish.ix;
+    const y = baseY + fish.iy;
+
+    if (this.hands.length) {
+      let nearest = this.hands[0];
+      let nearestDistance = Infinity;
+      for (const hand of this.hands) {
+        const distance = Math.hypot(hand.x - x, hand.y - y);
+        if (distance < nearestDistance) {
+          nearest = hand;
+          nearestDistance = distance;
+        }
+      }
+      const radius = 0.43;
+      if (nearestDistance < radius && nearestDistance > 0.018) {
+        const pull = (1 - nearestDistance / radius) * 0.012;
+        fish.ivx += (nearest.x - x) / nearestDistance * pull;
+        fish.ivy += (nearest.y - y) / nearestDistance * pull;
+      }
+    }
+
+    if (this.current.strength > 0) {
+      fish.ivx += this.current.x * this.current.strength * 0.0042;
+      fish.ivy += this.current.y * this.current.strength * 0.0042;
+    }
+
+    if (this.vortex) {
+      const dx = x - this.vortex.x;
+      const dy = y - this.vortex.y;
+      const distance = Math.max(0.035, Math.hypot(dx, dy));
+      if (distance < 0.58) {
+        const force = (1 - distance / 0.58) * this.vortex.strength;
+        fish.ivx += (-dy / distance * 0.012 - dx * 0.008) * force;
+        fish.ivy += (dx / distance * 0.012 - dy * 0.008) * force;
+      }
+    }
+
+    fish.ivx += -fish.ix * 0.0025;
+    fish.ivy += -fish.iy * 0.0025;
+    fish.ivx *= 0.92;
+    fish.ivy *= 0.92;
+    const frameScale = Math.min(2, delta * 60);
+    fish.ix += fish.ivx * frameScale;
+    fish.iy += fish.ivy * frameScale;
+    fish.ix = Math.max(-0.42, Math.min(0.42, fish.ix));
+    fish.iy = Math.max(-0.36, Math.min(0.36, fish.iy));
+    fish.lastX = baseX + fish.ix;
+    fish.lastY = baseY + fish.iy;
+    return { x: fish.lastX, y: fish.lastY, vx: fish.ivx, vy: fish.ivy };
   }
 
   drawFish(ctx, x, y, rotation, size, tone, alpha) {
@@ -241,6 +445,86 @@ export class AmbientOcean {
       ctx.restore();
     }
     this.summonedCreatures = this.summonedCreatures.filter((creature) => creature.life > 0);
+  }
+
+  drawSharks(ctx, width, height, time, delta) {
+    for (const shark of this.sharks) {
+      shark.age += delta;
+      shark.life -= delta;
+      shark.x += shark.direction * delta * 0.76;
+      const appear = Math.min(1, shark.age / 0.22);
+      const fade = Math.min(1, shark.life / 0.42);
+      const unit = Math.min(width, height) * 0.13;
+      ctx.save();
+      ctx.translate(shark.x * width, (shark.y + Math.sin(time * 4 + shark.phase) * 0.012) * height);
+      ctx.scale(shark.direction * unit, unit);
+      ctx.globalAlpha = appear * fade * 0.78;
+      ctx.shadowColor = '#56dcff';
+      ctx.shadowBlur = 0.2;
+      const gradient = ctx.createLinearGradient(-1.5, -0.5, 1.25, 0.5);
+      gradient.addColorStop(0, '#031939');
+      gradient.addColorStop(0.5, '#07517b');
+      gradient.addColorStop(1, '#0aa0bd');
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.moveTo(-1.45, 0);
+      ctx.lineTo(-2.05, -0.72);
+      ctx.lineTo(-1.9, 0);
+      ctx.lineTo(-2.05, 0.72);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(-1.5, 0);
+      ctx.bezierCurveTo(-0.7, -0.62, 0.75, -0.62, 1.55, -0.08);
+      ctx.quadraticCurveTo(1.72, 0, 1.52, 0.12);
+      ctx.bezierCurveTo(0.66, 0.63, -0.7, 0.55, -1.5, 0);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(-0.25, -0.43);
+      ctx.lineTo(0.18, -1.12);
+      ctx.lineTo(0.48, -0.42);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(-0.25, 0.36);
+      ctx.lineTo(0.28, 0.8);
+      ctx.lineTo(0.48, 0.31);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#d8fbff';
+      ctx.beginPath();
+      ctx.arc(1.02, -0.18, 0.07, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+
+      const wakeX = (shark.x - shark.direction * 0.12) * width;
+      const wakeY = shark.y * height;
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.strokeStyle = `rgba(151,242,255,${appear * fade * 0.42})`;
+      ctx.lineWidth = Math.max(2, unit * 0.025);
+      for (let index = 0; index < 3; index += 1) {
+        ctx.beginPath();
+        ctx.arc(wakeX, wakeY, unit * (0.48 + index * 0.26), -1.15, 1.15);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    this.sharks = this.sharks.filter((shark) => shark.life > 0 && shark.x > -0.45 && shark.x < 1.45);
+  }
+
+  drawSpecialFlash(ctx, width, height) {
+    if (this.specialFlash <= 0) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = this.specialFlash * 0.26;
+    const glow = ctx.createRadialGradient(width * 0.5, height * 0.55, 0, width * 0.5, height * 0.55, Math.max(width, height) * 0.7);
+    glow.addColorStop(0, '#dfffff');
+    glow.addColorStop(0.34, '#50eaff');
+    glow.addColorStop(1, 'rgba(36,91,255,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, width, height);
+    ctx.restore();
   }
 
   drawOctopus(ctx) {
