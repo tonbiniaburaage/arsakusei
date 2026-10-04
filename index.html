@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#03172c">
   <title>DREAMY OCEAN — 光る海の水族館</title>
-  <link rel="stylesheet" href="./styles.css?v=20261004-interactions1">
+  <link rel="stylesheet" href="./styles.css?v=20261004-interactions2">
 </head>
 <body>
   <main id="app" class="is-starting">
@@ -14,14 +14,12 @@
     <canvas id="ocean" aria-hidden="true"></canvas>
 
     <section id="gesture-guide" class="gesture-guide" aria-live="polite">
-      <div id="gesture-progress" class="gesture-guide__progress">
-        <div id="gesture-ghost" class="gesture-guide__ghost" aria-hidden="true">✋</div>
+      <div class="gesture-guide__copy">
+        <span>GESTURE HINT</span>
+        <p id="gesture-label">手をかざしてみよう</p>
+        <small>集める・振って流す・大きく回す・両手でチャージ</small>
       </div>
-      <div class="gesture-guide__bubbles" aria-hidden="true">
-        <i></i><i></i><i></i><i></i>
-      </div>
-      <p id="gesture-label">手をかざしてみよう</p>
-      <small>✋ 集める　〰 振って流す　🌀 ぐるぐる　👐 両手の必殺技</small>
+      <div id="gesture-progress" class="gesture-guide__progress" aria-hidden="true"><i></i></div>
     </section>
 
     <header class="title-card">
@@ -46,6 +44,6 @@
     </div>
   </main>
 
-  <script type="module" src="./src/main.js?v=20261004-interactions1"></script>
+  <script type="module" src="./src/main.js?v=20261004-interactions2"></script>
 </body>
 </html>

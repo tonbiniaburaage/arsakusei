@@ -1,6 +1,6 @@
-import { AmbientOcean } from './ambient-ocean.js?v=20261004-interactions1';
+import { AmbientOcean } from './ambient-ocean.js?v=20261004-interactions2';
 import { CameraMotionDetector } from './motion-detector.js?v=20261004-kiosk1';
-import { GestureController } from './gesture-controller.js?v=20261004-interactions1';
+import { GestureController } from './gesture-controller.js?v=20261004-interactions2';
 
 const app = document.querySelector('#app');
 const video = document.querySelector('#camera');
@@ -36,8 +36,8 @@ const gestures = new GestureController(video, gestureElements, {
     ocean.startVortex(x, y);
     showTemporaryStatus('ぐるぐる渦潮が発生！');
   },
-  onSpecial({ x, y }) {
-    ocean.launchShark(x, y);
+  onSpecial({ x, y, direction }) {
+    ocean.launchShark(x, y, direction);
     showTemporaryStatus('必殺！サメ・ストリーム！');
   },
   onUnavailable() {
@@ -88,38 +88,33 @@ function startPreview() {
       if (previousPhase !== phase) sharkLaunched = false;
       const hand = { x: 0.34 + Math.sin(elapsed * 1.4) * 0.08, y: 0.57 + Math.cos(elapsed * 1.1) * 0.05, size: 0.2 };
       ocean.setHandInteraction({ hands: [hand], speed: 0.12 });
-      gestureElements.ghost.textContent = '✋';
       gestureElements.label.textContent = '魚が手に集まっているよ';
     } else if (phase === 'flow') {
       const hand = { x: 0.2 + (cycle - 3) * 0.45, y: 0.55, size: 0.2 };
       ocean.setHandInteraction({ hands: [hand], velocity: { x: 1.3, y: 0 }, speed: 1.3 });
-      gestureElements.ghost.textContent = '〰';
       gestureElements.label.textContent = '水流で魚が流される！';
     } else if (phase === 'scatter') {
       ocean.setHandInteraction({ hands: [] });
       if (previousPhase !== phase) ocean.releaseHands({ x: 0.72, y: 0.55 });
-      gestureElements.ghost.textContent = '✋';
       gestureElements.label.textContent = '手をかざしてみよう';
     } else if (phase === 'vortex') {
       const angle = (cycle - 5.6) * 4.2;
       const hand = { x: 0.42 + Math.cos(angle) * 0.13, y: 0.55 + Math.sin(angle) * 0.13, size: 0.2 };
       ocean.setHandInteraction({ hands: [hand], speed: 0.8 });
       if (previousPhase !== phase) ocean.startVortex(0.42, 0.55);
-      gestureElements.ghost.textContent = '🌀';
       gestureElements.label.textContent = 'ぐるぐる渦潮が発生！';
     } else {
-      const charge = Math.min(1, (cycle - 8.4) / 1.8);
+      const charge = Math.min(1, (cycle - 8.4) / 3);
       ocean.setHandInteraction({
         hands: [{ x: 0.38, y: 0.58, size: 0.2 }, { x: 0.62, y: 0.58, size: 0.2 }],
         charge
       });
       gestureElements.ghost.textContent = '⚡';
       gestureElements.label.textContent = '両手パワーをためろ！';
-      gestureElements.progress.style.setProperty('--progress', `${charge * 360}deg`);
+      gestureElements.progress.style.setProperty('--progress', `${charge * 100}%`);
       if (charge >= 1 && !sharkLaunched) {
-        ocean.launchShark(0.5, 0.58);
+        ocean.launchShark(0.5, 0.58, { x: 0.86, y: -0.5 });
         sharkLaunched = true;
-        gestureElements.ghost.textContent = '🦈';
         gestureElements.label.textContent = '必殺！サメ・ストリーム！';
       }
     }

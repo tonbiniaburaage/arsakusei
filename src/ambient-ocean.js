@@ -3,9 +3,10 @@ const TAU = Math.PI * 2;
 export class AmbientOcean {
   constructor() {
     this.seed = 0x51ea;
-    this.sweepFish = this.makeFish(24, 'sweep');
-    this.ringFish = this.makeFish(17, 'ring');
-    this.laneFish = this.makeFish(11, 'lane');
+    this.sweepFish = this.makeFish(14, 'sweep');
+    this.ringFish = this.makeFish(9, 'ring');
+    this.laneFish = this.makeFish(7, 'lane');
+    this.driftSchools = this.makeDriftSchools(6);
     this.bubbles = this.makeBubbles(18);
     this.ripples = [];
     this.summonedCreatures = [];
@@ -49,6 +50,19 @@ export class AmbientOcean {
     }));
   }
 
+  makeDriftSchools(count) {
+    return Array.from({ length: count }, (_, index) => ({
+      fish: this.makeFish(5 + Math.floor(this.random() * 5), `drift-${index}`),
+      y: 0.18 + this.random() * 0.68,
+      speed: 0.018 + this.random() * 0.028,
+      direction: index % 2 === 0 ? 1 : -1,
+      spreadX: 0.09 + this.random() * 0.09,
+      spreadY: 0.025 + this.random() * 0.035,
+      phase: this.random() * TAU,
+      scale: 0.62 + this.random() * 0.65
+    }));
+  }
+
   draw(ctx, width, height, time, delta) {
     if (!width || !height) return;
     this.motionBoost = Math.max(0, this.motionBoost - delta * 0.72);
@@ -61,6 +75,7 @@ export class AmbientOcean {
     this.drawSweepSchool(ctx, width, height, this.swimTime);
     this.drawRingSchool(ctx, width, height, this.swimTime);
     this.drawLaneSchool(ctx, width, height, this.swimTime);
+    this.drawDriftSchools(ctx, width, height, this.swimTime);
     this.drawBubbles(ctx, width, height, time, delta);
     this.drawSummonedCreatures(ctx, width, height, time, delta);
     this.drawSharks(ctx, width, height, time, delta);
@@ -88,7 +103,13 @@ export class AmbientOcean {
     const origin = position || this.lastHands[0] || { x: 0.5, y: 0.55 };
     this.hands = [];
     this.lastHands = [origin];
-    for (const fish of [...this.sweepFish, ...this.ringFish, ...this.laneFish]) {
+    const allFish = [
+      ...this.sweepFish,
+      ...this.ringFish,
+      ...this.laneFish,
+      ...this.driftSchools.flatMap((school) => school.fish)
+    ];
+    for (const fish of allFish) {
       const angle = Math.atan2((fish.lastY ?? this.random()) - origin.y, (fish.lastX ?? this.random()) - origin.x);
       const kick = 0.14 + this.random() * 0.13;
       fish.ivx = (fish.ivx || 0) + Math.cos(angle) * kick;
@@ -102,20 +123,24 @@ export class AmbientOcean {
     this.reactToMotion(x, y, 1);
   }
 
-  launchShark(x = 0.5, y = 0.55) {
-    const fromLeft = x > 0.5;
+  launchShark(x = 0.5, y = 0.55, direction = { x: 1, y: 0 }) {
+    const length = Math.max(0.001, Math.hypot(direction.x, direction.y));
+    const dx = direction.x / length;
+    const dy = direction.y / length;
     this.sharks.push({
-      x: fromLeft ? -0.28 : 1.28,
-      y: Math.max(0.25, Math.min(0.75, y)),
-      direction: fromLeft ? 1 : -1,
+      x: x - dx * 0.2,
+      y: y - dy * 0.2,
+      dx,
+      dy,
+      rotation: Math.atan2(dy, dx),
       age: 0,
       life: 2.25,
       phase: this.random() * TAU
     });
     this.specialFlash = 1;
     this.interactionLockout = 1.65;
-    this.current.x = fromLeft ? 1.35 : -1.35;
-    this.current.y = 0;
+    this.current.x = dx * 1.35;
+    this.current.y = dy * 1.35;
     this.current.strength = 1.35;
     this.releaseHands({ x, y });
   }
@@ -306,6 +331,33 @@ export class AmbientOcean {
     }
   }
 
+  drawDriftSchools(ctx, width, height, time) {
+    for (const school of this.driftSchools) {
+      const rawTravel = (time * school.speed + school.phase / TAU) % 1.45;
+      const centerX = school.direction > 0 ? rawTravel - 0.22 : 1.22 - rawTravel;
+      const centerY = school.y + Math.sin(time * 0.32 + school.phase) * 0.035;
+      for (const fish of school.fish) {
+        const column = (fish.u - 0.5) * school.spreadX;
+        const row = fish.offset * school.spreadY + Math.sin(fish.phase + time * 0.55) * 0.008;
+        let x = centerX + column * school.direction;
+        if (x < -0.25) x += 1.45;
+        if (x > 1.25) x -= 1.45;
+        const y = centerY + row;
+        const moved = this.moveFish(fish, x, y, this.frameDelta || 1 / 60);
+        const heading = school.direction > 0 ? 0 : Math.PI;
+        this.drawFish(
+          ctx,
+          moved.x * width,
+          moved.y * height,
+          heading + Math.atan2(moved.vy, Math.max(0.2, 1 + Math.abs(moved.vx))),
+          Math.min(width, height) * 0.019 * fish.size * school.scale,
+          fish.tone,
+          0.3 + school.scale * 0.08
+        );
+      }
+    }
+  }
+
   moveFish(fish, baseX, baseY, delta) {
     fish.ix ??= 0;
     fish.iy ??= 0;
@@ -451,13 +503,15 @@ export class AmbientOcean {
     for (const shark of this.sharks) {
       shark.age += delta;
       shark.life -= delta;
-      shark.x += shark.direction * delta * 0.76;
+      shark.x += shark.dx * delta * 0.76;
+      shark.y += shark.dy * delta * 0.76;
       const appear = Math.min(1, shark.age / 0.22);
       const fade = Math.min(1, shark.life / 0.42);
       const unit = Math.min(width, height) * 0.13;
       ctx.save();
       ctx.translate(shark.x * width, (shark.y + Math.sin(time * 4 + shark.phase) * 0.012) * height);
-      ctx.scale(shark.direction * unit, unit);
+      ctx.rotate(shark.rotation);
+      ctx.scale(unit, unit);
       ctx.globalAlpha = appear * fade * 0.78;
       ctx.shadowColor = '#56dcff';
       ctx.shadowBlur = 0.2;
@@ -497,8 +551,8 @@ export class AmbientOcean {
       ctx.fill();
       ctx.restore();
 
-      const wakeX = (shark.x - shark.direction * 0.12) * width;
-      const wakeY = shark.y * height;
+      const wakeX = (shark.x - shark.dx * 0.12) * width;
+      const wakeY = (shark.y - shark.dy * 0.12) * height;
       ctx.save();
       ctx.globalCompositeOperation = 'screen';
       ctx.strokeStyle = `rgba(151,242,255,${appear * fade * 0.42})`;
@@ -510,7 +564,7 @@ export class AmbientOcean {
       }
       ctx.restore();
     }
-    this.sharks = this.sharks.filter((shark) => shark.life > 0 && shark.x > -0.45 && shark.x < 1.45);
+    this.sharks = this.sharks.filter((shark) => shark.life > 0 && shark.x > -0.45 && shark.x < 1.45 && shark.y > -0.45 && shark.y < 1.45);
   }
 
   drawSpecialFlash(ctx, width, height) {

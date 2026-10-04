@@ -4,7 +4,7 @@ const PALM_LANDMARKS = [0, 5, 9, 13, 17];
 const SAMPLE_INTERVAL_MS = 52;
 const CIRCLE_WINDOW_MS = 1450;
 const CIRCLE_TRIGGER_RADIANS = Math.PI * 1.52;
-const SPECIAL_CHARGE_SECONDS = 1.25;
+const SPECIAL_CHARGE_SECONDS = 3;
 
 export class GestureController {
   constructor(video, elements, callbacks = {}) {
@@ -21,6 +21,7 @@ export class GestureController {
     this.hadHands = false;
     this.missedFrames = 0;
     this.twoHandCharge = 0;
+    this.chargeOrigin = null;
     this.specialCooldownUntil = 0;
     this.vortexCooldownUntil = 0;
     this.lastUiProgress = '';
@@ -103,6 +104,7 @@ export class GestureController {
     if (!hands.length) {
       this.missedFrames += 1;
       this.twoHandCharge = Math.max(0, this.twoHandCharge - delta * 2.6);
+      if (this.twoHandCharge === 0) this.chargeOrigin = null;
       if (this.hadHands && this.missedFrames >= 2) {
         this.hadHands = false;
         this.callbacks.onHandsLost?.(this.previousPrimary);
@@ -132,15 +134,19 @@ export class GestureController {
         x: (hands[0].x + hands[1].x) / 2,
         y: (hands[0].y + hands[1].y) / 2
       };
+      if (!this.chargeOrigin) this.chargeOrigin = { ...midpoint };
       this.updateGuide('⚡', '両手パワーをためろ！', this.twoHandCharge, true);
       if (this.twoHandCharge >= 1) {
+        const direction = this.chargeDirection(midpoint);
         this.specialCooldownUntil = now + 3200;
         this.twoHandCharge = 0;
-        this.callbacks.onSpecial?.(midpoint);
+        this.chargeOrigin = null;
+        this.callbacks.onSpecial?.({ ...midpoint, direction });
         this.announce('🦈', '必殺！サメ・ストリーム！');
       }
     } else {
       this.twoHandCharge = Math.max(0, this.twoHandCharge - delta * 2.4);
+      if (this.twoHandCharge === 0) this.chargeOrigin = null;
       const circle = this.updateCirclePath(primary, now);
       if (circle.triggered && now >= this.vortexCooldownUntil) {
         this.vortexCooldownUntil = now + 4200;
@@ -169,6 +175,20 @@ export class GestureController {
       const nearestDistance = Math.hypot(nearest.x - this.previousPrimary.x, nearest.y - this.previousPrimary.y);
       return distance < nearestDistance ? hand : nearest;
     }, hands[0]);
+  }
+
+  chargeDirection(midpoint) {
+    const origin = this.chargeOrigin || { x: 0.5, y: 0.55 };
+    let x = midpoint.x - origin.x;
+    let y = midpoint.y - origin.y;
+    let length = Math.hypot(x, y);
+    if (length < 0.055) {
+      x = midpoint.x - 0.5;
+      y = midpoint.y - 0.55;
+      length = Math.hypot(x, y);
+    }
+    if (length < 0.035) return { x: 1, y: 0 };
+    return { x: x / length, y: y / length };
   }
 
   updateCirclePath(point, now) {
@@ -214,12 +234,12 @@ export class GestureController {
   updateGuide(symbol, label, progress, twoHand) {
     this.elements.guide.classList.toggle('is-two-hand', Boolean(twoHand));
     this.elements.guide.classList.toggle('is-tracking', progress > 0);
-    this.elements.ghost.textContent = symbol;
+    if (this.elements.ghost) this.elements.ghost.textContent = symbol;
     this.elements.label.textContent = label;
-    const progressDegrees = `${Math.round(Math.min(1, progress) * 360)}deg`;
-    if (progressDegrees !== this.lastUiProgress) {
-      this.elements.progress.style.setProperty('--progress', progressDegrees);
-      this.lastUiProgress = progressDegrees;
+    const progressValue = `${Math.round(Math.min(1, progress) * 100)}%`;
+    if (progressValue !== this.lastUiProgress) {
+      this.elements.progress.style.setProperty('--progress', progressValue);
+      this.lastUiProgress = progressValue;
     }
   }
 
