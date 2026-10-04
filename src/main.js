@@ -1,225 +1,180 @@
-import { AREngine } from './ar-engine.js?v=20260801-stable-v12';
-import { TrackingEngine } from './tracking-engine.js?v=20260801-stable-v12';
-import { EffectController } from './effect-controller.js?v=20260801-stable-v12';
-import { PhotoController } from './photo-controller.js?v=20260801-stable-v12';
-import { CREATURE_ORDER, CREATURES, qualityProfile } from './creature-config.js?v=20260801-stable-v12';
+import { AmbientOcean } from './ambient-ocean.js?v=20261004-gestures1';
+import { CameraMotionDetector } from './motion-detector.js?v=20261004-kiosk1';
+import { GestureController } from './gesture-controller.js?v=20261004-gestures1';
 
-const stage = document.querySelector('#stage');
-const effectsCanvas = document.querySelector('#effects');
-const welcome = document.querySelector('#welcome');
-const startButton = document.querySelector('#start-button');
-const demoButton = document.querySelector('#demo-button');
-const photoButton = document.querySelector('#photo-button');
-const resetButton = document.querySelector('#reset-button');
+const app = document.querySelector('#app');
+const video = document.querySelector('#camera');
+const canvas = document.querySelector('#ocean');
+const setup = document.querySelector('#setup');
+const setupTitle = document.querySelector('#setup-title');
+const setupMessage = document.querySelector('#setup-message');
+const cameraButton = document.querySelector('#camera-button');
+const fullscreenButton = document.querySelector('#fullscreen-button');
 const status = document.querySelector('#status');
-const phaseBadge = document.querySelector('#phase-badge');
-const trackingGuide = document.querySelector('#tracking-guide');
-const activeCreature = document.querySelector('#active-creature');
+const context = canvas.getContext('2d');
 
-const profile = qualityProfile();
-const effects = new EffectController(effectsCanvas, profile);
-let engine = null;
-let trackingMode = false;
-let starting = false;
-let demoSequenceActive = false;
-let demoTransitionTimer = null;
-let autoResetTimer = null;
+const gestureElements = {
+  guide: document.querySelector('#gesture-guide'),
+  progress: document.querySelector('#gesture-progress'),
+  ghost: document.querySelector('#gesture-ghost'),
+  label: document.querySelector('#gesture-label')
+};
 
-effects.setGameCallbacks({
-  onStateChange({ key, phase, count, total, remaining }) {
-    const config = CREATURES[key];
-    if (phase === 'intro' && config) status.textContent = `ドリーミー${config.label}が現れた！`;
-    if (phase === 'jelly-rhythm') status.textContent = `光る泡をタッチ！　${count}/${total}`;
-    if (phase === 'jellyfish-celebrate') status.textContent = 'クラゲ、クリア！';
-    if (phase === 'whale-charge') status.textContent = `画面を長押ししてみて！　${count}/${total}`;
-    if (phase === 'whale-rise') status.textContent = 'チャージMAX！ 大波がくるよ！';
-    if (phase === 'whale-celebrate') status.textContent = 'クジラ、クリア！';
-    if (phase === 'turtle-polish') status.textContent = `甲羅をぐるぐる磨こう！　${count}/${total}秒`;
-    if (phase === 'turtle-celebrate') status.textContent = 'カメ、クリア！';
-    if (phase === 'light-collect') status.textContent = '光る模型にスマホを向けて、海の光を集めよう！';
-    if (phase === 'stamp') {
-      status.textContent = remaining > 0
-        ? '次の海の生き物にカメラを向けてみよう！'
-        : `${config?.label || '海のなかま'}の光るスタンプをゲット！`;
-    }
-    if (phase === 'complete') status.textContent = 'スタンプを集めて、海の光を完成させよう！';
-    if (phase === 'all-complete') status.textContent = '3つの海の光がそろったよ！';
-    if (phase === 'finished') status.textContent = 'おしまい';
-    handleDemoStateChange(key, phase);
+const ocean = new AmbientOcean();
+const motion = new CameraMotionDetector(video, ({ x, y, intensity }) => {
+  ocean.reactToMotion(x, y, intensity);
+});
+const gestures = new GestureController(video, gestureElements, {
+  onSummon({ type, x, y, special, label }) {
+    ocean.summonCreature(type, x, y, { special });
+    status.textContent = label;
+    clearTimeout(gestureStatusTimer);
+    gestureStatusTimer = setTimeout(() => {
+      status.textContent = '手のポーズで海のなかまを呼んでみよう';
+    }, 1800);
   },
-  onAutoReset() {
-    if (autoResetTimer) return;
-    autoResetTimer = setTimeout(() => {
-      autoResetTimer = null;
-      restartFromBeginning();
-    }, 0);
+  onUnavailable() {
+    status.textContent = '魚たちの水中世界をお楽しみください';
+    gestureElements.guide.hidden = true;
   }
 });
 
-const photoController = new PhotoController({
-  button: photoButton,
-  getEngine: () => engine,
-  effectsCanvas,
-  countdown: document.querySelector('#capture-countdown'),
-  flash: document.querySelector('#capture-flash'),
-  preview: document.querySelector('#photo-preview'),
-  previewImage: document.querySelector('#photo-image'),
-  saveButton: document.querySelector('#photo-save'),
-  closeButton: document.querySelector('#photo-close'),
-  toast: document.querySelector('#toast')
+let stream = null;
+let starting = false;
+let lastFrame = performance.now();
+let gestureStatusTimer = null;
+let previewTimer = null;
+const previewMode = new URLSearchParams(location.search).get('preview') === '1';
+
+cameraButton.addEventListener('click', () => startCamera(false));
+fullscreenButton.addEventListener('click', toggleFullscreen);
+addEventListener('keydown', (event) => {
+  if (event.key.toLowerCase() === 'f') toggleFullscreen();
 });
+addEventListener('resize', resize);
+addEventListener('pagehide', stopCamera);
 
-startButton.addEventListener('click', () => {
-  stopDemoSequence();
-  startExperience({ tracking: true, auto: false });
-});
-demoButton.addEventListener('click', () => startDemoSequence());
+resize();
+requestAnimationFrame(render);
+if (previewMode) startPreview();
+else setTimeout(() => startCamera(true), 120);
 
-function startDemoSequence() {
-  if (starting) return;
-  stopDemoSequence();
-  demoSequenceActive = true;
-  effects.clearCollectedStamps();
-  startExperience({ tracking: false, config: CREATURES[CREATURE_ORDER[0]] });
+function startPreview() {
+  setup.hidden = true;
+  app.classList.remove('is-starting');
+  app.classList.add('is-running');
+  status.textContent = 'ジェスチャー召喚のプレビュー';
+  const samples = [
+    { type: 'octopus', x: 0.25, y: 0.7, label: 'タコのなかまが現れた！' },
+    { type: 'puffer', x: 0.3, y: 0.66, label: 'フグのなかまがふくらんだ！' },
+    { type: 'crab', x: 0.27, y: 0.72, label: 'カニのなかまが現れた！' },
+    { type: 'crab', x: 0.5, y: 0.68, special: true, label: '大きなカニが現れた！' }
+  ];
+  let index = 0;
+  const summonNext = () => {
+    const sample = samples[index % samples.length];
+    ocean.summonCreature(sample.type, sample.x, sample.y, { special: sample.special });
+    status.textContent = sample.label;
+    index += 1;
+  };
+  summonNext();
+  previewTimer = setInterval(summonNext, 3200);
 }
 
-function stopDemoSequence() {
-  demoSequenceActive = false;
-  if (demoTransitionTimer) clearTimeout(demoTransitionTimer);
-  demoTransitionTimer = null;
-}
-
-function handleDemoStateChange(key, phase) {
-  if (!demoSequenceActive) return;
-  if (phase === 'finished') return;
-  if (phase !== 'complete' || demoTransitionTimer) return;
-  const currentIndex = CREATURE_ORDER.indexOf(key);
-  const nextKey = CREATURE_ORDER[currentIndex + 1];
-  if (!nextKey) return;
-  status.textContent = `次は${CREATURES[nextKey].label}！`;
-  demoTransitionTimer = setTimeout(() => {
-    demoTransitionTimer = null;
-    if (!demoSequenceActive) return;
-    startExperience({ tracking: false, config: CREATURES[nextKey] });
-  }, 1450);
-}
-
-async function startExperience({ tracking, config, auto = false }) {
-  if (starting) return;
+async function startCamera(automatic) {
+  if (starting || stream) return;
   starting = true;
-  trackingMode = tracking;
-  startButton.disabled = true;
-  demoButton.disabled = true;
-  startButton.textContent = tracking ? 'カメラを準備中…' : '演出を準備中…';
-  status.textContent = tracking ? 'カメラの使用を許可してください' : `${config.label}を準備しています`;
+  cameraButton.disabled = true;
+  cameraButton.textContent = 'カメラを準備中…';
+  status.textContent = 'カメラを準備中…';
 
   try {
-    engine?.stop?.();
-    engine = null;
-    stage.replaceChildren();
-    effects.reset();
-
-    engine = tracking
-      ? new TrackingEngine(stage, CREATURES, profile, effects, {
-          onTargetFound: handleTargetFound,
-          onTargetLost: handleTargetLost
-        })
-      : new AREngine(stage, config, profile, effects);
-
-    const result = await engine.start();
-    leaveWelcome();
-    resetButton.hidden = false;
-    photoButton.hidden = false;
-    phaseBadge.hidden = false;
-
-    if (tracking) {
-      trackingGuide.hidden = false;
-      activeCreature.hidden = true;
-      photoController.setEnabled(false);
-      status.textContent = '光る模型にスマホを向けて、海の光を集めよう！';
-    } else {
-      activeCreature.textContent = `${config.icon} ${config.label}`;
-      activeCreature.hidden = false;
-      photoController.setEnabled(true);
-      if (result.renderMode === 'sprite2d') {
-        effects.restartGame(config.key);
-        status.textContent = `ドリーミー${config.label}が現れた！`;
-      } else {
-        status.textContent = result.usedPlaceholder
-          ? `仮の${config.label}モデルを表示中`
-          : `${config.label}モデルを表示中`;
-      }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error('このブラウザはカメラに対応していません');
     }
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        frameRate: { ideal: 30, max: 30 }
+      },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+    motion.start();
+    app.classList.remove('is-starting');
+    app.classList.add('is-running');
+    status.textContent = '手の認識を準備中…';
+    setup.classList.add('is-hidden');
+    setTimeout(() => { setup.hidden = true; }, 580);
+    gestures.start().then(() => {
+      status.textContent = '手のポーズで海のなかまを呼んでみよう';
+    }).catch((error) => {
+      console.warn('手ジェスチャー認識を初期化できません。', error);
+      status.textContent = '魚たちの水中世界をお楽しみください';
+      gestureElements.guide.hidden = true;
+    });
   } catch (error) {
-    console.warn('ARを開始できませんでした。', error);
-    engine?.stop?.();
-    engine = null;
-    stage.replaceChildren();
-    effects.reset();
-    status.textContent = auto
-      ? '自動でカメラを起動できませんでした。下のボタンをタップしてください'
-      : `開始できませんでした：${friendlyError(error)}`;
-    startButton.disabled = false;
-    demoButton.disabled = false;
-    startButton.textContent = 'タップしてカメラを起動';
+    stream = null;
+    setup.hidden = false;
+    setup.classList.remove('is-hidden');
+    setupTitle.textContent = cameraErrorTitle(error, automatic);
+    setupMessage.textContent = friendlyError(error);
+    cameraButton.disabled = false;
+    cameraButton.textContent = 'カメラを起動';
+    status.textContent = 'カメラ待機中';
   } finally {
     starting = false;
   }
 }
 
-function handleTargetFound(key, config, detail = {}) {
-  trackingGuide.hidden = true;
-  activeCreature.textContent = detail.rough
-    ? `${config.icon} ${config.label}をかんたん認識`
-    : `${config.icon} ${config.label}を認識`;
-  activeCreature.hidden = false;
-  photoController.setEnabled(true);
-  status.textContent = `ドリーミー${config.label}が現れた！`;
+function stopCamera() {
+  motion.stop();
+  gestures.stop();
+  clearTimeout(gestureStatusTimer);
+  if (previewTimer) clearInterval(previewTimer);
+  stream?.getTracks().forEach((track) => track.stop());
+  stream = null;
 }
 
-function handleTargetLost(key, config) {
-  if (!trackingMode) return;
-  activeCreature.hidden = true;
-  trackingGuide.hidden = false;
-  photoController.setEnabled(false);
-  status.textContent = `${config.label}のカードをもう一度映してください`;
+function resize() {
+  const dpr = Math.min(devicePixelRatio || 1, 1.5);
+  canvas.width = Math.max(1, Math.round(innerWidth * dpr));
+  canvas.height = Math.max(1, Math.round(innerHeight * dpr));
+  canvas.style.width = `${innerWidth}px`;
+  canvas.style.height = `${innerHeight}px`;
+  context.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
-function leaveWelcome() {
-  welcome.classList.add('is-leaving');
-  setTimeout(() => welcome.hidden = true, 360);
+function render(timestamp) {
+  const delta = Math.min((timestamp - lastFrame) / 1000, 0.05);
+  lastFrame = timestamp;
+  context.clearRect(0, 0, innerWidth, innerHeight);
+  ocean.draw(context, innerWidth, innerHeight, timestamp / 1000, delta);
+  requestAnimationFrame(render);
 }
 
-resetButton.addEventListener('click', () => {
-  if (autoResetTimer) clearTimeout(autoResetTimer);
-  autoResetTimer = null;
-  restartFromBeginning();
-});
-
-function restartFromBeginning() {
-  if (demoSequenceActive) {
-    startDemoSequence();
-    return;
+async function toggleFullscreen() {
+  try {
+    if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
+    else await document.exitFullscreen();
+  } catch {
+    setupMessage.textContent = 'ブラウザのメニューから全画面表示にしてください。';
   }
-
-  const activeKey = effects.activeKey;
-  engine?.reset?.();
-  effects.resetProgress(activeKey);
-  if (!activeKey) status.textContent = '光る模型にスマホを向けて、海の光を集めよう！';
-}
-
-addEventListener('pagehide', () => engine?.stop?.());
-
-const pageOptions = new URLSearchParams(location.search);
-if (pageOptions.get('demo') !== '1') {
-  setTimeout(() => startExperience({ tracking: true, auto: true }), 80);
-} else {
-  status.textContent = 'デモボタンで3種類の演出を順番に確認できます';
 }
 
 function friendlyError(error) {
-  if (error?.name === 'NotAllowedError') return 'カメラの許可が必要です';
+  if (!window.isSecureContext) return 'HTTPSまたはlocalhostで開いてください。';
+  if (error?.name === 'NotAllowedError') return 'ブラウザのカメラ許可を「許可」にして、もう一度起動してください。';
+  if (error?.name === 'NotFoundError') return 'PCにカメラが接続されているか確認してください。';
+  if (error?.name === 'NotReadableError') return 'ほかのアプリがカメラを使用していないか確認してください。';
+  return error?.message || 'カメラとブラウザの設定を確認してください。';
+}
+
+function cameraErrorTitle(error, automatic) {
   if (error?.name === 'NotFoundError') return 'カメラが見つかりません';
-  if (!window.isSecureContext) return 'HTTPSで開いてください';
-  return error?.message || 'ブラウザとカメラ設定を確認してください';
+  if (error?.name === 'NotReadableError') return 'カメラを使用できません';
+  if (error?.name === 'NotAllowedError' || automatic) return 'カメラの許可が必要です';
+  return 'カメラを起動できませんでした';
 }

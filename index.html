@@ -2,79 +2,50 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-  <meta name="theme-color" content="#090616">
-  <title>ドリーミー海のなかま AR</title>
-  <link rel="stylesheet" href="./styles.css?v=20260729-stabledemo2">
-  <script type="importmap">
-    {
-      "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
-        "mindar-image-three": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"
-      }
-    }
-  </script>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#03172c">
+  <title>DREAMY OCEAN — 光る海の水族館</title>
+  <link rel="stylesheet" href="./styles.css?v=20261004-gestures1">
 </head>
 <body>
-  <main id="app">
-    <video id="camera" autoplay playsinline muted aria-label="カメラ映像" hidden></video>
-    <div id="stage" aria-hidden="true"></div>
-    <canvas id="effects" aria-hidden="true"></canvas>
-    <div id="game-controls" class="game-controls" aria-label="海のなかまミニゲーム"></div>
+  <main id="app" class="is-starting">
+    <video id="camera" autoplay playsinline muted aria-label="展示カメラの映像"></video>
+    <div class="ocean-color" aria-hidden="true"></div>
+    <canvas id="ocean" aria-hidden="true"></canvas>
 
-    <header class="hud">
-      <p class="eyebrow">DREAMY OCEAN</p>
-      <h1>海のなかま AR</h1>
-      <p id="status" role="status">光る模型にスマホを向けて、海の光を集めよう！</p>
+    <section id="gesture-guide" class="gesture-guide" aria-live="polite">
+      <div id="gesture-progress" class="gesture-guide__progress">
+        <div id="gesture-ghost" class="gesture-guide__ghost" aria-hidden="true">✋</div>
+      </div>
+      <div class="gesture-guide__bubbles" aria-hidden="true">
+        <i></i><i></i><i></i><i></i>
+      </div>
+      <p id="gesture-label">手のひらを手形に合わせよう</p>
+      <small>✋ タコ　✊ フグ　✌ カニ　👐 大きなカニ</small>
+    </section>
+
+    <header class="title-card">
+      <p>DREAMY OCEAN</p>
+      <h1>光る海の水族館</h1>
+      <span id="status" role="status">海の光を準備中…</span>
     </header>
 
-    <section id="welcome" class="welcome">
-      <div class="welcome__icon" aria-hidden="true">✦</div>
-      <h2>模型から海のなかまが飛び出すよ</h2>
-      <p>光る模型にスマホを向けて、海の光を集めよう！</p>
-      <button id="start-button" class="primary-button">タップしてカメラを起動</button>
-      <div class="demo-row">
-        <button id="demo-button" class="secondary-button demo-button">3種類のデモを見る</button>
-      </div>
-      <p class="privacy-note">カメラ映像は端末内だけで使われ、送信されません。</p>
+    <section id="setup" class="setup" aria-labelledby="setup-title">
+      <div class="setup__orb" aria-hidden="true">✶</div>
+      <p class="setup__eyebrow">CAMERA SETUP</p>
+      <h2 id="setup-title">カメラを起動します</h2>
+      <p id="setup-message">カメラへのアクセスを許可すると、現実の景色が水中世界に変わります。</p>
+      <button id="camera-button" type="button">カメラを起動</button>
+      <button id="fullscreen-button" class="secondary" type="button">全画面で表示</button>
+      <small>映像はこのPC内だけで使用し、保存・送信しません。</small>
     </section>
 
-    <div id="tracking-guide" class="tracking-guide" hidden>
-      <span class="tracking-guide__corner tracking-guide__corner--tl"></span>
-      <span class="tracking-guide__corner tracking-guide__corner--tr"></span>
-      <span class="tracking-guide__corner tracking-guide__corner--bl"></span>
-      <span class="tracking-guide__corner tracking-guide__corner--br"></span>
-      <p>光る模型にスマホを向けて、海の光を集めよう！</p>
+    <div class="interaction-hint" aria-hidden="true">
+      <span class="interaction-hint__light"></span>
+      <p>手形にポーズを合わせると、海のなかまが現れるよ</p>
     </div>
-
-    <div id="active-creature" class="active-creature" hidden></div>
-    <div id="phase-badge" class="phase-badge" hidden>Phase 7 · 展示版</div>
-
-    <button id="photo-button" class="photo-button" aria-label="AR写真を撮る" hidden disabled>
-      <span class="photo-button__lens"></span>
-    </button>
-    <button id="reset-button" class="icon-button icon-button--right reset-button" aria-label="ゲームをやり直す" hidden>
-      <span class="reset-button__icon" aria-hidden="true">↻</span>
-      <span class="reset-button__label">やり直し</span>
-    </button>
-
-    <div id="capture-countdown" class="capture-countdown" hidden aria-live="assertive">✦</div>
-    <div id="capture-flash" class="capture-flash" aria-hidden="true"></div>
-    <div id="toast" class="toast" role="status" hidden></div>
-
-    <section id="photo-preview" class="photo-preview" hidden aria-label="撮影したAR写真">
-      <div class="photo-preview__panel">
-        <h2>AR写真が撮れました</h2>
-        <img id="photo-image" alt="撮影したAR写真">
-        <div class="photo-preview__actions">
-          <button id="photo-save" class="primary-button">共有・保存</button>
-          <button id="photo-close" class="secondary-button">閉じる</button>
-        </div>
-      </div>
-    </section>
   </main>
 
-  <script type="module" src="./src/main.js?v=20260801-stable-v12"></script>
+  <script type="module" src="./src/main.js?v=20261004-gestures1"></script>
 </body>
 </html>
