@@ -14,15 +14,19 @@ body { background: #03172c; user-select: none; -webkit-user-select: none; }
   object-fit: cover;
   transform: scaleX(-1);
   background: radial-gradient(circle at 50% 24%, #177aa1, #061c39 72%);
-  opacity: 0;
+  opacity: 1;
 }
 
 #water-scene {
   z-index: 0;
-  display: block;
+  display: none;
   background: radial-gradient(circle at 50% 18%, #168eb8, #041a38 74%);
 }
 
+#app.is-water-rendering #camera { opacity: 0; }
+#app.is-water-rendering #water-scene,
+#app.is-water-preview #water-scene { display: block; }
+#app.is-water-preview #camera { opacity: 0; }
 #app.is-webgl-disabled #camera { opacity: 1; }
 #app.is-webgl-disabled #water-scene { display: none; }
 

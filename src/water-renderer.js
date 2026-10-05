@@ -180,7 +180,7 @@ export class WaterRenderer {
   }
 
   render(time, delta) {
-    if (!this.available || !this.program) return;
+    if (!this.available || !this.program) return false;
     const gl = this.gl;
     for (const ripple of this.ripples) ripple.age += delta * (0.85 + ripple.intensity * 0.15);
     this.ripples = this.ripples.filter((ripple) => ripple.age < 4.2);
@@ -213,5 +213,6 @@ export class WaterRenderer {
     gl.uniform1f(this.locations.handCount, this.hands.length);
     gl.uniform1f(this.locations.charge, this.charge);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
+    return Boolean(hasCamera);
   }
 }

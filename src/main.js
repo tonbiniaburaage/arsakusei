@@ -1,7 +1,7 @@
-import { AmbientOcean } from './ambient-ocean.js?v=20261005-pc1';
-import { CameraMotionDetector } from './motion-detector.js?v=20261005-pc1';
+import { AmbientOcean } from './ambient-ocean.js?v=20261005-pc2';
+import { CameraMotionDetector } from './motion-detector.js?v=20261005-pc2';
 import { GestureController } from './gesture-controller.js?v=20261005-interactions6';
-import { WaterRenderer } from './water-renderer.js?v=20261005-pc1';
+import { WaterRenderer } from './water-renderer.js?v=20261005-pc2';
 
 const app = document.querySelector('#app');
 const video = document.querySelector('#camera');
@@ -84,6 +84,7 @@ if (previewMode) startPreview();
 else setTimeout(() => startCamera(true), 120);
 
 function startPreview() {
+  app.classList.add('is-water-preview');
   setup.hidden = true;
   app.classList.remove('is-starting');
   app.classList.add('is-running');
@@ -187,14 +188,7 @@ async function startCamera(automatic) {
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error('このブラウザはカメラに対応していません');
     }
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
-        frameRate: { ideal: 30, max: 30 }
-      },
-      audio: false
-    });
+    stream = await requestCameraStream();
     video.srcObject = stream;
     await video.play();
     motion.start();
@@ -231,6 +225,24 @@ function stopCamera() {
   if (previewTimer) clearInterval(previewTimer);
   stream?.getTracks().forEach((track) => track.stop());
   stream = null;
+  app.classList.remove('is-water-rendering');
+}
+
+async function requestCameraStream() {
+  const preferred = {
+    video: {
+      width: { ideal: 1920 },
+      height: { ideal: 1080 },
+      frameRate: { ideal: 30, max: 30 }
+    },
+    audio: false
+  };
+  try {
+    return await navigator.mediaDevices.getUserMedia(preferred);
+  } catch (error) {
+    if (!['OverconstrainedError', 'NotReadableError', 'AbortError'].includes(error?.name)) throw error;
+    return navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+  }
 }
 
 function showTemporaryStatus(message) {
@@ -255,7 +267,8 @@ function render(timestamp) {
   const delta = Math.min((timestamp - lastFrame) / 1000, 0.05);
   lastFrame = timestamp;
   context.clearRect(0, 0, innerWidth, innerHeight);
-  water.render(timestamp / 1000, delta);
+  const waterHasCamera = water.render(timestamp / 1000, delta);
+  if (!previewMode) app.classList.toggle('is-water-rendering', waterHasCamera);
   ocean.draw(context, innerWidth, innerHeight, timestamp / 1000, delta);
   requestAnimationFrame(render);
 }
