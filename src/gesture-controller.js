@@ -20,6 +20,9 @@ export class GestureController {
     this.path = [];
     this.hadHands = false;
     this.missedFrames = 0;
+    this.lastDetectedHands = [];
+    this.lastChargeDistance = null;
+    this.chargePairLatched = false;
     this.twoHandCharge = 0;
     this.chargeOrigin = null;
     this.specialCooldownUntil = 0;
@@ -47,6 +50,9 @@ export class GestureController {
     this.path.length = 0;
     this.previousPrimary = null;
     this.hadHands = false;
+    this.lastDetectedHands = [];
+    this.lastChargeDistance = null;
+    this.chargePairLatched = false;
   }
 
   stopTimer() {
@@ -113,19 +119,24 @@ export class GestureController {
       this.resetGestureHolds();
       this.twoHandCharge = Math.max(0, this.twoHandCharge - delta * 2.6);
       if (this.twoHandCharge === 0) this.chargeOrigin = null;
-      if (this.hadHands && this.missedFrames >= 2) {
+      if (this.hadHands && this.missedFrames >= 5) {
         this.hadHands = false;
         this.callbacks.onHandsLost?.(this.previousPrimary);
         this.previousPrimary = null;
         this.path.length = 0;
+        this.lastDetectedHands = [];
+        this.lastChargeDistance = null;
+        this.chargePairLatched = false;
       }
-      this.callbacks.onInteraction?.({ hands: [], velocity: { x: 0, y: 0 }, speed: 0, charge: this.twoHandCharge });
-      this.showIdleGuide();
+      const bufferedHands = this.missedFrames < 5 ? this.lastDetectedHands : [];
+      this.callbacks.onInteraction?.({ hands: bufferedHands, velocity: { x: 0, y: 0 }, speed: 0, charge: this.twoHandCharge });
+      if (!bufferedHands.length) this.showIdleGuide();
       return;
     }
 
     this.missedFrames = 0;
     this.hadHands = true;
+    this.lastDetectedHands = hands.map((hand) => ({ ...hand }));
     const primary = this.choosePrimary(hands);
     const rawVelocity = this.previousPrimary
       ? { x: (primary.x - this.previousPrimary.x) / delta, y: (primary.y - this.previousPrimary.y) / delta }
@@ -231,6 +242,7 @@ export class GestureController {
   findChargePair(hands) {
     let best = null;
     let bestDistance = Infinity;
+    let bestNormalizedDistance = Infinity;
     for (let firstIndex = 0; firstIndex < hands.length - 1; firstIndex += 1) {
       for (let secondIndex = firstIndex + 1; secondIndex < hands.length; secondIndex += 1) {
         const first = hands[firstIndex];
@@ -241,15 +253,26 @@ export class GestureController {
         const oppositeHands = first.handedness === 'Unknown'
           || second.handedness === 'Unknown'
           || first.handedness !== second.handedness;
-        if (!oppositeHands || Math.abs(first.y - second.y) > 0.3) continue;
-        if (normalizedDistance < 0.42 || normalizedDistance > 2.35) continue;
-        if (normalizedDistance < bestDistance) {
-          bestDistance = normalizedDistance;
+        if (!oppositeHands || Math.abs(first.y - second.y) > 0.17) continue;
+        if (distance > 0.22 || normalizedDistance < 0.22 || normalizedDistance > 1.35) continue;
+        if (normalizedDistance < bestNormalizedDistance) {
+          bestDistance = distance;
+          bestNormalizedDistance = normalizedDistance;
           best = [first, second];
         }
       }
     }
-    return best;
+    if (!best) {
+      this.lastChargeDistance = null;
+      this.chargePairLatched = false;
+      return null;
+    }
+    const closing = this.lastChargeDistance !== null
+      && this.lastChargeDistance - bestDistance > 0.006;
+    if (closing && bestNormalizedDistance <= 1.08) this.chargePairLatched = true;
+    if (bestNormalizedDistance > 1.22) this.chargePairLatched = false;
+    this.lastChargeDistance = bestDistance;
+    return this.chargePairLatched && bestNormalizedDistance <= 1.12 ? best : null;
   }
 
   updateCreatureGestures(hands, delta, now) {

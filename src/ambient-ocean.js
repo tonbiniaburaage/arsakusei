@@ -207,7 +207,7 @@ export class AmbientOcean {
   reactToMotion(x, y, intensity = 0.5) {
     this.motionBoost = Math.max(this.motionBoost, 0.45 + intensity * 0.55);
     this.ripples.push({ x, y, age: 0, life: 2.1, intensity, phase: this.random() * TAU });
-    if (this.ripples.length > 10) this.ripples.shift();
+    if (this.ripples.length > 6) this.ripples.shift();
     for (const fish of this.boidSchools.flatMap((school) => school.fish)) {
       const dx = fish.x - x;
       const dy = fish.y - y;
@@ -273,17 +273,17 @@ export class AmbientOcean {
 
   drawWater(ctx, width, height, time) {
     const wash = ctx.createLinearGradient(0, 0, 0, height);
-    wash.addColorStop(0, 'rgba(22, 174, 216, .105)');
-    wash.addColorStop(0.48, 'rgba(12, 111, 170, .075)');
-    wash.addColorStop(1, 'rgba(9, 35, 91, .14)');
+    wash.addColorStop(0, 'rgba(22, 174, 216, .035)');
+    wash.addColorStop(0.48, 'rgba(12, 111, 170, .022)');
+    wash.addColorStop(1, 'rgba(9, 35, 91, .055)');
     ctx.fillStyle = wash;
     ctx.fillRect(0, 0, width, height);
 
     ctx.globalCompositeOperation = 'screen';
     const glowX = width * (0.5 + Math.sin(time * 0.075) * 0.08);
     const glow = ctx.createRadialGradient(glowX, -height * 0.04, 0, glowX, 0, height * 0.64);
-    glow.addColorStop(0, 'rgba(196, 249, 255, .20)');
-    glow.addColorStop(0.38, 'rgba(102, 222, 255, .075)');
+    glow.addColorStop(0, 'rgba(196, 249, 255, .085)');
+    glow.addColorStop(0.38, 'rgba(102, 222, 255, .03)');
     glow.addColorStop(1, 'rgba(70, 177, 255, 0)');
     ctx.fillStyle = glow;
     ctx.fillRect(0, 0, width, height * 0.75);
@@ -292,7 +292,7 @@ export class AmbientOcean {
     for (let index = 0; index < 5; index += 1) {
       const phase = time * 0.18 + index * 1.7;
       const x = width * (0.08 + index * 0.21 + Math.sin(phase) * 0.055);
-      ctx.strokeStyle = `rgba(173, 241, 255, ${0.035 + index * 0.007})`;
+      ctx.strokeStyle = `rgba(173, 241, 255, ${0.014 + index * 0.003})`;
       ctx.beginPath();
       ctx.moveTo(x, -10);
       ctx.quadraticCurveTo(x + Math.sin(phase) * width * 0.07, height * 0.25, x - width * 0.1, height * 0.58);
@@ -423,14 +423,14 @@ export class AmbientOcean {
           const dx = hand.x - fish.x;
           const dy = hand.y - fish.y;
           const distance = Math.max(0.004, Math.hypot(dx * aspect, dy));
-          if (distance > 0.44) continue;
+          if (distance > 0.88) continue;
           if (distance < 0.075) {
             const touchForce = (0.075 - distance) * 4.8;
             ax -= dx / distance * touchForce;
             ay -= dy / distance * touchForce;
             fish.touch = 1;
           } else {
-            const pull = (1 - distance / 0.44) * 0.052;
+            const pull = (1 - distance / 0.88) * 0.48;
             ax += dx / distance * pull;
             ay += dy / distance * pull;
           }
@@ -461,7 +461,8 @@ export class AmbientOcean {
         let vy = fish.vy + ay * dt;
         const speed = Math.hypot(vx, vy);
         const minSpeed = 0.018 + school.scale * 0.009;
-        const maxSpeed = 0.095 + this.motionBoost * 0.085 + fish.touch * 0.04;
+        const gathering = attractingHands.length ? 0.23 : 0;
+        const maxSpeed = 0.11 + gathering + this.motionBoost * 0.1 + fish.touch * 0.055;
         if (speed > maxSpeed) {
           vx = vx / speed * maxSpeed;
           vy = vy / speed * maxSpeed;
@@ -1055,18 +1056,18 @@ export class AmbientOcean {
       const y = ripple.y * height;
       const radius = (18 + progress * Math.min(width, height) * 0.24) * (0.78 + ripple.intensity * 0.34);
       const glow = ctx.createRadialGradient(x, y, 0, x, y, radius * 0.78);
-      glow.addColorStop(0, `rgba(226, 253, 255, ${alpha * 0.16})`);
-      glow.addColorStop(0.52, `rgba(80, 223, 255, ${alpha * 0.055})`);
+      glow.addColorStop(0, `rgba(226, 253, 255, ${alpha * 0.075})`);
+      glow.addColorStop(0.52, `rgba(80, 223, 255, ${alpha * 0.025})`);
       glow.addColorStop(1, 'rgba(80, 223, 255, 0)');
       ctx.fillStyle = glow;
       ctx.beginPath();
       ctx.arc(x, y, radius * 0.78, 0, TAU);
       ctx.fill();
-      for (let ring = 0; ring < 4; ring += 1) {
+      for (let ring = 0; ring < 3; ring += 1) {
         const ringRadius = radius * (1 - ring * 0.15) - ring * 8;
         if (ringRadius <= 0) continue;
-        ctx.strokeStyle = `rgba(${155 - ring * 7}, ${239 - ring * 4}, 255, ${alpha * (0.72 - ring * 0.12)})`;
-        ctx.lineWidth = Math.max(1, 2.4 + ripple.intensity * 1.6 - ring * 0.42);
+        ctx.strokeStyle = `rgba(${155 - ring * 7}, ${239 - ring * 4}, 255, ${alpha * (0.34 - ring * 0.07)})`;
+        ctx.lineWidth = Math.max(1, 1.4 + ripple.intensity * 0.85 - ring * 0.25);
         ctx.beginPath();
         ctx.ellipse(
           x + Math.sin(ripple.phase + ring) * progress * 5,
@@ -1079,10 +1080,10 @@ export class AmbientOcean {
         );
         ctx.stroke();
       }
-      for (let sparkle = 0; sparkle < 5; sparkle += 1) {
-        const angle = ripple.phase + sparkle / 5 * TAU + progress * 0.4;
+      for (let sparkle = 0; sparkle < 3; sparkle += 1) {
+        const angle = ripple.phase + sparkle / 3 * TAU + progress * 0.4;
         const orbit = radius * (0.52 + sparkle % 2 * 0.18);
-        ctx.globalAlpha = alpha * 0.62;
+        ctx.globalAlpha = alpha * 0.32;
         ctx.fillStyle = sparkle % 2 ? '#dffeff' : '#82eaff';
         ctx.beginPath();
         ctx.arc(x + Math.cos(angle) * orbit, y + Math.sin(angle) * orbit * 0.79, 1.4 + ripple.intensity * 1.7, 0, TAU);

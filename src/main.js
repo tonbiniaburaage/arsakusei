@@ -1,7 +1,7 @@
-import { AmbientOcean } from './ambient-ocean.js?v=20261005-pc2';
-import { CameraMotionDetector } from './motion-detector.js?v=20261005-pc2';
-import { GestureController } from './gesture-controller.js?v=20261005-interactions6';
-import { WaterRenderer } from './water-renderer.js?v=20261005-pc2';
+import { AmbientOcean } from './ambient-ocean.js?v=20261005-pc3';
+import { CameraMotionDetector } from './motion-detector.js?v=20261005-pc3';
+import { GestureController } from './gesture-controller.js?v=20261005-pc3';
+import { WaterRenderer } from './water-renderer.js?v=20261005-pc3';
 
 const app = document.querySelector('#app');
 const video = document.querySelector('#camera');
