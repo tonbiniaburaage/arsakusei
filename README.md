@@ -38,6 +38,14 @@ python -m http.server 8000
 
 ChromeまたはEdgeで `http://localhost:8000/` を開き、初回だけカメラを許可します。次回以降はページ起動後に自動でカメラ映像へ移行します。
 
+PC展示版では `.mjs` と `.wasm` を正しい形式で配信する必要があります。Node.jsが利用できる場合は、プロジェクトのフォルダーで次を実行します。
+
+```powershell
+node tools/exhibition-server.mjs
+```
+
+その後、`http://127.0.0.1:8004/index.html` をChromeまたはEdgeで開きます。
+
 ## 現在使用するファイル
 
 ```text
