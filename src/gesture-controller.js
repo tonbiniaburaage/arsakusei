@@ -24,9 +24,10 @@ export class GestureController {
     this.chargeOrigin = null;
     this.specialCooldownUntil = 0;
     this.vortexCooldownUntil = 0;
-    this.gestureCandidate = null;
-    this.gestureHold = 0;
-    this.gestureCooldowns = new Map();
+    this.gestureStates = new Map([
+      ['Pointing_Up', { hold: 0, cooldownUntil: 0 }],
+      ['Victory', { hold: 0, cooldownUntil: 0 }]
+    ]);
     this.lastUiProgress = '';
   }
 
@@ -60,7 +61,7 @@ export class GestureController {
     const options = {
       baseOptions: { modelAssetPath: modelPath, delegate: 'GPU' },
       runningMode: 'VIDEO',
-      numHands: 2,
+      numHands: 6,
       minHandDetectionConfidence: 0.42,
       minHandPresenceConfidence: 0.42,
       minTrackingConfidence: 0.42
@@ -98,7 +99,8 @@ export class GestureController {
       ...this.palmCenter(points),
       size: this.handSize(points),
       gesture: result?.gestures?.[index]?.[0]?.categoryName || 'None',
-      gestureScore: result?.gestures?.[index]?.[0]?.score || 0
+      gestureScore: result?.gestures?.[index]?.[0]?.score || 0,
+      handedness: result?.handednesses?.[index]?.[0]?.categoryName || 'Unknown'
     }));
   }
 
@@ -108,8 +110,7 @@ export class GestureController {
 
     if (!hands.length) {
       this.missedFrames += 1;
-      this.gestureCandidate = null;
-      this.gestureHold = 0;
+      this.resetGestureHolds();
       this.twoHandCharge = Math.max(0, this.twoHandCharge - delta * 2.6);
       if (this.twoHandCharge === 0) this.chargeOrigin = null;
       if (this.hadHands && this.missedFrames >= 2) {
@@ -133,14 +134,17 @@ export class GestureController {
     this.smoothedVelocity.y += (rawVelocity.y - this.smoothedVelocity.y) * 0.46;
     const speed = Math.hypot(this.smoothedVelocity.x, this.smoothedVelocity.y);
     this.previousPrimary = { ...primary };
+    const chargePair = this.findChargePair(hands);
+    const chargingHands = new Set(chargePair || []);
+    const freeHands = hands.filter((hand) => !chargingHands.has(hand));
 
-    if (hands.length >= 2) {
+    if (chargePair) {
       this.path.length = 0;
-      this.gestureCandidate = null;
-      this.gestureHold = 0;
+      const freeGestureTriggers = this.updateCreatureGestures(freeHands, delta, now);
+      this.triggerCreatureGestures(freeGestureTriggers);
       const midpoint = {
-        x: (hands[0].x + hands[1].x) / 2,
-        y: (hands[0].y + hands[1].y) / 2
+        x: (chargePair[0].x + chargePair[1].x) / 2,
+        y: (chargePair[0].y + chargePair[1].y) / 2
       };
       if (now < this.specialCooldownUntil) {
         this.twoHandCharge = 0;
@@ -149,7 +153,7 @@ export class GestureController {
       } else {
         this.twoHandCharge = Math.min(1, this.twoHandCharge + delta / SPECIAL_CHARGE_SECONDS);
         if (!this.chargeOrigin) this.chargeOrigin = { ...midpoint };
-        this.updateGuide('両手パワーをためろ！', this.twoHandCharge, true);
+        this.updateGuide('両手を左右どちらかへ伸ばして、ためろ！', this.twoHandCharge, true);
         if (this.twoHandCharge >= 1) {
           const direction = this.chargeDirection(midpoint);
           this.specialCooldownUntil = now + 3200;
@@ -162,12 +166,11 @@ export class GestureController {
     } else {
       this.twoHandCharge = Math.max(0, this.twoHandCharge - delta * 2.4);
       if (this.twoHandCharge === 0) this.chargeOrigin = null;
-      const creatureGesture = this.updateCreatureGesture(primary, delta, now);
+      const creatureGestures = this.updateCreatureGestures(hands, delta, now);
       const circle = this.updateCirclePath(primary, now);
-      if (creatureGesture) {
+      if (creatureGestures.length) {
         this.path.length = 0;
-        this.callbacks.onCreatureGesture?.({ type: creatureGesture, x: primary.x, y: primary.y });
-        this.announce(creatureGesture === 'garden-eel' ? 'ちんあなごが生えてきた！' : 'カニたちがお散歩を始めた！');
+        this.triggerCreatureGestures(creatureGestures, true);
       } else if (circle.triggered && now >= this.vortexCooldownUntil) {
         this.vortexCooldownUntil = now + 4200;
         this.path.length = 0;
@@ -176,20 +179,26 @@ export class GestureController {
       } else if (speed > 0.82) {
         this.updateGuide('水流で魚が流される！', Math.min(1, speed / 1.8), false);
       } else if (!this.elements.guide.classList.contains('is-success')) {
-        const gestureHint = primary.gesture === 'Pointing_Up'
+        const pointingHand = hands.find((hand) => hand.gesture === 'Pointing_Up' && hand.gestureScore >= 0.56);
+        const victoryHand = hands.find((hand) => hand.gesture === 'Victory' && hand.gestureScore >= 0.52);
+        const gestureHint = pointingHand
           ? '人差し指をそのまま上げてみよう'
-          : primary.gesture === 'Victory'
+          : victoryHand
             ? 'ピースをそのまま見せてみよう'
             : circle.progress > 0.28
               ? 'そのまま大きくぐるぐる！'
               : '魚が手に集まっているよ';
-        const progress = this.gestureCandidate ? Math.min(1, this.gestureHold / 0.34) : circle.progress;
+        const gestureProgress = Math.max(...[...this.gestureStates.values()].map((state) => state.hold / 0.34), 0);
+        const progress = gestureProgress > 0 ? Math.min(1, gestureProgress) : circle.progress;
         this.updateGuide(gestureHint, progress, false);
       }
     }
 
     this.callbacks.onInteraction?.({
-      hands,
+      hands: hands.map((hand) => ({
+        ...hand,
+        suppressAttraction: chargingHands.has(hand) || hand.gesture === 'Pointing_Up'
+      })),
       velocity: this.smoothedVelocity,
       speed,
       charge: this.twoHandCharge
@@ -219,25 +228,64 @@ export class GestureController {
     return { x: x / length, y: y / length };
   }
 
-  updateCreatureGesture(hand, delta, now) {
-    const supported = hand.gesture === 'Pointing_Up' || hand.gesture === 'Victory';
-    const threshold = hand.gesture === 'Pointing_Up' ? 0.56 : 0.52;
-    if (!supported || hand.gestureScore < threshold) {
-      this.gestureCandidate = null;
-      this.gestureHold = 0;
-      return null;
+  findChargePair(hands) {
+    let best = null;
+    let bestDistance = Infinity;
+    for (let firstIndex = 0; firstIndex < hands.length - 1; firstIndex += 1) {
+      for (let secondIndex = firstIndex + 1; secondIndex < hands.length; secondIndex += 1) {
+        const first = hands[firstIndex];
+        const second = hands[secondIndex];
+        const distance = Math.hypot(first.x - second.x, first.y - second.y);
+        const averageSize = Math.max(0.06, (first.size + second.size) / 2);
+        const normalizedDistance = distance / averageSize;
+        const oppositeHands = first.handedness === 'Unknown'
+          || second.handedness === 'Unknown'
+          || first.handedness !== second.handedness;
+        if (!oppositeHands || Math.abs(first.y - second.y) > 0.3) continue;
+        if (normalizedDistance < 0.42 || normalizedDistance > 2.35) continue;
+        if (normalizedDistance < bestDistance) {
+          bestDistance = normalizedDistance;
+          best = [first, second];
+        }
+      }
     }
-    if (this.gestureCandidate !== hand.gesture) {
-      this.gestureCandidate = hand.gesture;
-      this.gestureHold = delta;
-    } else {
-      this.gestureHold += delta;
+    return best;
+  }
+
+  updateCreatureGestures(hands, delta, now) {
+    const triggers = [];
+    for (const [gesture, state] of this.gestureStates) {
+      const threshold = gesture === 'Pointing_Up' ? 0.56 : 0.52;
+      const hand = hands.find((candidate) => candidate.gesture === gesture && candidate.gestureScore >= threshold);
+      if (!hand) {
+        state.hold = Math.max(0, state.hold - delta * 2.8);
+        continue;
+      }
+      state.hold += delta;
+      if (state.hold < 0.34 || now < state.cooldownUntil) continue;
+      state.hold = 0;
+      state.cooldownUntil = now + 4800;
+      triggers.push({
+        type: gesture === 'Pointing_Up' ? 'garden-eel' : 'crab-walk',
+        x: hand.x,
+        y: hand.y
+      });
     }
-    const cooldownUntil = this.gestureCooldowns.get(hand.gesture) || 0;
-    if (this.gestureHold < 0.34 || now < cooldownUntil) return null;
-    this.gestureCooldowns.set(hand.gesture, now + 4800);
-    this.gestureHold = 0;
-    return hand.gesture === 'Pointing_Up' ? 'garden-eel' : 'crab-walk';
+    return triggers;
+  }
+
+  triggerCreatureGestures(triggers, announce = false) {
+    for (const trigger of triggers) this.callbacks.onCreatureGesture?.(trigger);
+    if (!announce || !triggers.length) return;
+    const hasEels = triggers.some((trigger) => trigger.type === 'garden-eel');
+    const hasCrabs = triggers.some((trigger) => trigger.type === 'crab-walk');
+    if (hasEels && hasCrabs) this.announce('ちんあなごとカニが現れた！');
+    else if (hasEels) this.announce('ちんあなごが生えてきた！');
+    else this.announce('カニたちがお散歩を始めた！');
+  }
+
+  resetGestureHolds() {
+    for (const state of this.gestureStates.values()) state.hold = 0;
   }
 
   updateCirclePath(point, now) {

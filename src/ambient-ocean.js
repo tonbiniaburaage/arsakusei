@@ -3,10 +3,10 @@ const TAU = Math.PI * 2;
 export class AmbientOcean {
   constructor() {
     this.seed = 0x51ea;
-    this.sweepFish = this.makeFish(14, 'sweep');
-    this.ringFish = this.makeFish(9, 'ring');
-    this.laneFish = this.makeFish(7, 'lane');
-    this.driftSchools = this.makeDriftSchools(6);
+    this.sweepFish = this.makeFish(22, 'sweep');
+    this.ringFish = this.makeFish(14, 'ring');
+    this.laneFish = this.makeFish(10, 'lane');
+    this.driftSchools = this.makeDriftSchools(8);
     this.bubbles = this.makeBubbles(18);
     this.ripples = [];
     this.summonedCreatures = [];
@@ -19,6 +19,7 @@ export class AmbientOcean {
     this.handCharge = 0;
     this.current = { x: 0, y: 0, strength: 0 };
     this.vortex = null;
+    this.vortexSchool = [];
     this.specialFlash = 0;
     this.interactionLockout = 0;
     this.motionBoost = 0;
@@ -36,7 +37,7 @@ export class AmbientOcean {
       index,
       u: count <= 1 ? 0 : index / (count - 1),
       offset: (this.random() - 0.5) * 2,
-      size: 0.72 + this.random() * 0.62,
+      size: this.random() > 0.84 ? 1.45 + this.random() * 0.75 : 0.48 + this.random() * 1.05,
       phase: this.random() * TAU,
       tone: this.random()
     }));
@@ -54,7 +55,7 @@ export class AmbientOcean {
 
   makeDriftSchools(count) {
     return Array.from({ length: count }, (_, index) => ({
-      fish: this.makeFish(5 + Math.floor(this.random() * 5), `drift-${index}`),
+      fish: this.makeFish(7 + Math.floor(this.random() * 6), `drift-${index}`),
       y: 0.18 + this.random() * 0.68,
       speed: 0.018 + this.random() * 0.028,
       direction: index % 2 === 0 ? 1 : -1,
@@ -78,6 +79,7 @@ export class AmbientOcean {
     this.drawRingSchool(ctx, width, height, this.swimTime);
     this.drawLaneSchool(ctx, width, height, this.swimTime);
     this.drawDriftSchools(ctx, width, height, this.swimTime);
+    this.drawVortexSchool(ctx, width, height, time);
     this.drawGardenEels(ctx, width, height, time, delta);
     this.drawWalkingCrabs(ctx, width, height, time, delta);
     this.drawBubbles(ctx, width, height, time, delta);
@@ -91,7 +93,12 @@ export class AmbientOcean {
   setHandInteraction({ hands = [], velocity = { x: 0, y: 0 }, speed = 0, charge = 0 } = {}) {
     if (this.interactionLockout > 0) return;
     this.lastHands = this.hands.length ? this.hands : this.lastHands;
-    this.hands = hands.map((hand) => ({ x: hand.x, y: hand.y, size: hand.size || 0.18 }));
+    this.hands = hands.map((hand) => ({
+      x: hand.x,
+      y: hand.y,
+      size: hand.size || 0.18,
+      suppressAttraction: Boolean(hand.suppressAttraction || hand.gesture === 'Pointing_Up')
+    }));
     this.handVelocity.x += (velocity.x - this.handVelocity.x) * 0.46;
     this.handVelocity.y += (velocity.y - this.handVelocity.y) * 0.46;
     this.handCharge += (charge - this.handCharge) * 0.38;
@@ -124,21 +131,29 @@ export class AmbientOcean {
 
   startVortex(x, y) {
     this.vortex = { x, y, age: 0, life: 4.2, strength: 1 };
+    this.vortexSchool = Array.from({ length: 56 }, (_, index) => ({
+      angle: index / 56 * TAU + (this.random() - 0.5) * 0.18,
+      radius: 0.075 + this.random() * 0.24,
+      speed: 0.72 + this.random() * 0.95,
+      size: 0.42 + this.random() * 1.32,
+      tone: this.random(),
+      phase: this.random() * TAU
+    }));
     this.reactToMotion(x, y, 1);
   }
 
   launchShark(x = 0.5, y = 0.55, direction = { x: 1, y: 0 }) {
-    const length = Math.max(0.001, Math.hypot(direction.x, direction.y));
-    const dx = direction.x / length;
-    const dy = direction.y / length;
+    const dx = direction.x < 0 ? -1 : 1;
+    const dy = 0;
     this.sharks.push({
-      x: x - dx * 0.2,
-      y: y - dy * 0.2,
+      x: dx > 0 ? -0.28 : 1.28,
+      y: Math.max(0.28, Math.min(0.76, y)),
       dx,
       dy,
-      rotation: Math.atan2(dy, dx),
+      rotation: dx > 0 ? 0 : Math.PI,
+      speed: 1.56 / 5,
       age: 0,
-      life: 2.25,
+      life: 5.35,
       phase: this.random() * TAU
     });
     this.specialFlash = 1;
@@ -159,7 +174,10 @@ export class AmbientOcean {
       this.vortex.age += delta;
       this.vortex.life -= delta;
       this.vortex.strength = Math.min(1, this.vortex.age / 0.45) * Math.min(1, this.vortex.life / 0.8);
-      if (this.vortex.life <= 0) this.vortex = null;
+      if (this.vortex.life <= 0) {
+        this.vortex = null;
+        this.vortexSchool = [];
+      }
     }
   }
 
@@ -392,6 +410,29 @@ export class AmbientOcean {
     }
   }
 
+  drawVortexSchool(ctx, width, height, time) {
+    if (!this.vortex || !this.vortexSchool.length) return;
+    const centerX = this.vortex.x * width;
+    const centerY = this.vortex.y * height;
+    const unit = Math.min(width, height);
+    for (const fish of this.vortexSchool) {
+      const angle = fish.angle + this.vortex.age * fish.speed;
+      const radius = unit * fish.radius * (0.84 + Math.sin(time * 1.4 + fish.phase) * 0.08);
+      const x = centerX + Math.cos(angle) * radius;
+      const y = centerY + Math.sin(angle) * radius;
+      const alpha = (0.24 + fish.size * 0.12) * this.vortex.strength;
+      this.drawFish(
+        ctx,
+        x,
+        y,
+        angle + Math.PI / 2,
+        unit * 0.018 * fish.size,
+        fish.tone,
+        alpha
+      );
+    }
+  }
+
   moveFish(fish, baseX, baseY, delta) {
     fish.ix ??= 0;
     fish.iy ??= 0;
@@ -400,10 +441,11 @@ export class AmbientOcean {
     const x = baseX + fish.ix;
     const y = baseY + fish.iy;
 
-    if (this.hands.length) {
-      let nearest = this.hands[0];
+    const attractingHands = this.hands.filter((hand) => !hand.suppressAttraction);
+    if (attractingHands.length) {
+      let nearest = attractingHands[0];
       let nearestDistance = Infinity;
-      for (const hand of this.hands) {
+      for (const hand of attractingHands) {
         const distance = Math.hypot(hand.x - x, hand.y - y);
         if (distance < nearestDistance) {
           nearest = hand;
@@ -454,9 +496,12 @@ export class AmbientOcean {
     ctx.rotate(rotation);
     ctx.scale(size, size);
     ctx.globalAlpha = alpha;
-    const blue = Math.round(111 + tone * 61);
-    const green = Math.round(57 + tone * 75);
-    ctx.fillStyle = `rgb(7, ${green}, ${blue})`;
+    const palette = tone < 0.34
+      ? { body: '#07558d', eye: 'rgba(217, 250, 255, .86)' }
+      : tone < 0.72
+        ? { body: '#35b9d0', eye: 'rgba(239, 255, 255, .92)' }
+        : { body: '#d5f7fb', eye: 'rgba(24, 102, 145, .9)' };
+    ctx.fillStyle = palette.body;
 
     ctx.beginPath();
     ctx.moveTo(-0.8, 0);
@@ -471,8 +516,8 @@ export class AmbientOcean {
     ctx.closePath();
     ctx.fill();
 
-    ctx.globalAlpha = alpha * 0.8;
-    ctx.fillStyle = 'rgba(185, 247, 255, .75)';
+    ctx.globalAlpha = alpha * 0.9;
+    ctx.fillStyle = palette.eye;
     ctx.beginPath();
     ctx.arc(0.53, -0.08, 0.055, 0, TAU);
     ctx.fill();
@@ -513,28 +558,50 @@ export class AmbientOcean {
       const sway = Math.sin(time * 1.8 + eel.phase) * length * 0.2;
       const x = eel.x * width;
       const y = eel.baseY * height;
+      const bodyWidth = Math.max(9, Math.min(width, height) * 0.015);
       ctx.save();
-      ctx.globalAlpha = fade * 0.78;
+      ctx.globalAlpha = fade * 0.92;
       ctx.lineCap = 'round';
-      ctx.strokeStyle = '#063a58';
-      ctx.lineWidth = Math.max(7, Math.min(width, height) * 0.013);
-      ctx.shadowColor = 'rgba(75, 222, 239, .48)';
-      ctx.shadowBlur = Math.min(width, height) * 0.012;
+      ctx.strokeStyle = '#1679a6';
+      ctx.lineWidth = bodyWidth;
+      ctx.shadowColor = 'rgba(75, 222, 239, .56)';
+      ctx.shadowBlur = Math.min(width, height) * 0.016;
       ctx.beginPath();
       ctx.moveTo(x, y);
       ctx.bezierCurveTo(x - sway * 0.45, y - length * 0.34, x + sway * 0.62, y - length * 0.72, x + sway, y - length);
       ctx.stroke();
-      ctx.fillStyle = '#063a58';
+
+      ctx.fillStyle = '#1679a6';
       ctx.beginPath();
-      ctx.ellipse(x + sway, y - length, ctx.lineWidth * 0.68, ctx.lineWidth * 0.82, Math.sin(time + eel.phase) * 0.16, 0, TAU);
+      ctx.ellipse(x + sway, y - length, bodyWidth * 0.62, bodyWidth * 0.78, Math.sin(time + eel.phase) * 0.12, 0, TAU);
       ctx.fill();
-      ctx.fillStyle = 'rgba(202, 249, 255, .76)';
+
       ctx.shadowBlur = 0;
-      const eyeY = y - length - ctx.lineWidth * 0.14;
+      ctx.strokeStyle = 'rgba(191, 239, 246, .88)';
+      ctx.lineWidth = Math.max(1.5, bodyWidth * 0.12);
+      for (const fraction of [0.4, 0.53, 0.66]) {
+        const stripeX = x + sway * fraction;
+        const stripeY = y - length * fraction;
+        ctx.beginPath();
+        ctx.moveTo(stripeX - bodyWidth * 0.38, stripeY);
+        ctx.lineTo(stripeX + bodyWidth * 0.38, stripeY);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = '#062f52';
+      ctx.shadowBlur = 0;
+      const headX = x + sway;
+      const eyeY = y - length - bodyWidth * 0.12;
       ctx.beginPath();
-      ctx.arc(x + sway - ctx.lineWidth * 0.2, eyeY, Math.max(1, ctx.lineWidth * 0.075), 0, TAU);
-      ctx.arc(x + sway + ctx.lineWidth * 0.2, eyeY, Math.max(1, ctx.lineWidth * 0.075), 0, TAU);
+      ctx.arc(headX - bodyWidth * 0.2, eyeY, Math.max(1.2, bodyWidth * 0.075), 0, TAU);
+      ctx.arc(headX + bodyWidth * 0.2, eyeY, Math.max(1.2, bodyWidth * 0.075), 0, TAU);
       ctx.fill();
+      ctx.strokeStyle = '#062f52';
+      ctx.lineWidth = Math.max(1, bodyWidth * 0.07);
+      ctx.beginPath();
+      ctx.arc(headX, eyeY + bodyWidth * 0.19, bodyWidth * 0.16, 0.12, Math.PI - 0.12);
+      ctx.stroke();
+
       ctx.strokeStyle = 'rgba(130, 234, 244, .34)';
       ctx.lineWidth = 1.4;
       ctx.beginPath();
@@ -624,8 +691,8 @@ export class AmbientOcean {
     for (const shark of this.sharks) {
       shark.age += delta;
       shark.life -= delta;
-      shark.x += shark.dx * delta * 0.76;
-      shark.y += shark.dy * delta * 0.76;
+      shark.x += shark.dx * delta * shark.speed;
+      shark.y += shark.dy * delta * shark.speed;
       const appear = Math.min(1, shark.age / 0.22);
       const fade = Math.min(1, shark.life / 0.42);
       const unit = Math.min(width, height) * 0.13;

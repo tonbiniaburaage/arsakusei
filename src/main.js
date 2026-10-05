@@ -1,6 +1,6 @@
-import { AmbientOcean } from './ambient-ocean.js?v=20261004-interactions5';
+import { AmbientOcean } from './ambient-ocean.js?v=20261005-interactions6';
 import { CameraMotionDetector } from './motion-detector.js?v=20261004-kiosk1';
-import { GestureController } from './gesture-controller.js?v=20261004-interactions5';
+import { GestureController } from './gesture-controller.js?v=20261005-interactions6';
 
 const app = document.querySelector('#app');
 const video = document.querySelector('#camera');
@@ -103,7 +103,14 @@ function startPreview() {
         crabLaunched = false;
       }
       const hand = { x: 0.34 + Math.sin(elapsed * 1.4) * 0.08, y: 0.57 + Math.cos(elapsed * 1.1) * 0.05, size: 0.2 };
-      ocean.setHandInteraction({ hands: [hand], speed: 0.12 });
+      ocean.setHandInteraction({
+        hands: [
+          hand,
+          { x: 0.67 + Math.sin(elapsed * 1.1) * 0.06, y: 0.36, size: 0.17 },
+          { x: 0.76 + Math.cos(elapsed * 1.25) * 0.05, y: 0.72, size: 0.19 }
+        ],
+        speed: 0.12
+      });
       gestureElements.label.textContent = '魚が手に集まっているよ';
     } else if (phase === 'flow') {
       const hand = { x: 0.2 + (cycle - 3) * 0.45, y: 0.55, size: 0.2 };
@@ -125,7 +132,7 @@ function startPreview() {
         hands: [{ x: 0.38, y: 0.58, size: 0.2 }, { x: 0.62, y: 0.58, size: 0.2 }],
         charge
       });
-      gestureElements.label.textContent = '両手パワーをためろ！';
+      gestureElements.label.textContent = '両手を左右どちらかへ伸ばして、ためろ！';
       gestureElements.progress.style.setProperty('--progress', `${charge * 100}%`);
       if (charge >= 1 && !sharkLaunched) {
         ocean.launchShark(0.5, 0.58, { x: 0.86, y: -0.5 });
