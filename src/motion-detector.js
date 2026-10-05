@@ -3,8 +3,8 @@ export class CameraMotionDetector {
     this.video = video;
     this.onMotion = onMotion;
     this.canvas = document.createElement('canvas');
-    this.canvas.width = 96;
-    this.canvas.height = 54;
+    this.canvas.width = 128;
+    this.canvas.height = 72;
     this.context = this.canvas.getContext('2d', { alpha: false, willReadFrequently: true });
     this.previous = null;
     this.timer = null;
@@ -14,7 +14,7 @@ export class CameraMotionDetector {
   start() {
     this.stop();
     this.previous = null;
-    this.timer = setInterval(() => this.sample(), 120);
+    this.timer = setInterval(() => this.sample(), 80);
   }
 
   stop() {
@@ -52,7 +52,7 @@ export class CameraMotionDetector {
 
     this.previous = current;
     const now = performance.now();
-    if (changed < 38 || now < this.cooldownUntil) return;
+    if (changed < 48 || now < this.cooldownUntil) return;
     const sampleCount = width * height / 4;
     const intensity = Math.min(1, changed / (sampleCount * 0.22));
     // カメラ映像は鏡像表示なので、検出位置の左右も反転する。
@@ -61,6 +61,6 @@ export class CameraMotionDetector {
       y: sumY / changed / height,
       intensity
     });
-    this.cooldownUntil = now + 260;
+    this.cooldownUntil = now + 95;
   }
 }

@@ -1,9 +1,11 @@
-import { AmbientOcean } from './ambient-ocean.js?v=20261005-interactions6';
-import { CameraMotionDetector } from './motion-detector.js?v=20261004-kiosk1';
+import { AmbientOcean } from './ambient-ocean.js?v=20261005-pc1';
+import { CameraMotionDetector } from './motion-detector.js?v=20261005-pc1';
 import { GestureController } from './gesture-controller.js?v=20261005-interactions6';
+import { WaterRenderer } from './water-renderer.js?v=20261005-pc1';
 
 const app = document.querySelector('#app');
 const video = document.querySelector('#camera');
+const waterCanvas = document.querySelector('#water-scene');
 const canvas = document.querySelector('#ocean');
 const setup = document.querySelector('#setup');
 const setupTitle = document.querySelector('#setup-title');
@@ -12,6 +14,8 @@ const cameraButton = document.querySelector('#camera-button');
 const fullscreenButton = document.querySelector('#fullscreen-button');
 const status = document.querySelector('#status');
 const context = canvas.getContext('2d');
+const water = new WaterRenderer(waterCanvas, video);
+if (!water.available) app.classList.add('is-webgl-disabled');
 
 const gestureElements = {
   guide: document.querySelector('#gesture-guide'),
@@ -22,21 +26,26 @@ const gestureElements = {
 const ocean = new AmbientOcean();
 const motion = new CameraMotionDetector(video, ({ x, y, intensity }) => {
   ocean.reactToMotion(x, y, intensity);
+  water.addRipple(x, y, intensity);
 });
 const gestures = new GestureController(video, gestureElements, {
   onInteraction(state) {
-    ocean.setHandInteraction(state);
+    applyInteractionState(state);
   },
   onHandsLost(position) {
     ocean.releaseHands(position);
+    water.setHands([], 0);
+    water.addRipple(position?.x ?? 0.5, position?.y ?? 0.55, 1);
     showTemporaryStatus('魚たちがびっくりして散らばった！');
   },
   onVortex({ x, y }) {
     ocean.startVortex(x, y);
+    water.addRipple(x, y, 1.35);
     showTemporaryStatus('ぐるぐる渦潮が発生！');
   },
   onSpecial({ x, y, direction }) {
     ocean.launchShark(x, y, direction);
+    water.addRipple(x, y, 1.6);
     showTemporaryStatus('必殺！サメ・ストリーム！');
   },
   onCreatureGesture({ type, x, y }) {
@@ -103,7 +112,7 @@ function startPreview() {
         crabLaunched = false;
       }
       const hand = { x: 0.34 + Math.sin(elapsed * 1.4) * 0.08, y: 0.57 + Math.cos(elapsed * 1.1) * 0.05, size: 0.2 };
-      ocean.setHandInteraction({
+      applyInteractionState({
         hands: [
           hand,
           { x: 0.67 + Math.sin(elapsed * 1.1) * 0.06, y: 0.36, size: 0.17 },
@@ -114,21 +123,24 @@ function startPreview() {
       gestureElements.label.textContent = '魚が手に集まっているよ';
     } else if (phase === 'flow') {
       const hand = { x: 0.2 + (cycle - 3) * 0.45, y: 0.55, size: 0.2 };
-      ocean.setHandInteraction({ hands: [hand], velocity: { x: 1.3, y: 0 }, speed: 1.3 });
+      applyInteractionState({ hands: [hand], velocity: { x: 1.3, y: 0 }, speed: 1.3 });
       gestureElements.label.textContent = '水流で魚が流される！';
     } else if (phase === 'scatter') {
-      ocean.setHandInteraction({ hands: [] });
+      applyInteractionState({ hands: [] });
       if (previousPhase !== phase) ocean.releaseHands({ x: 0.72, y: 0.55 });
       gestureElements.label.textContent = '手をかざしてみよう';
     } else if (phase === 'vortex') {
       const angle = (cycle - 5.6) * 4.2;
       const hand = { x: 0.42 + Math.cos(angle) * 0.13, y: 0.55 + Math.sin(angle) * 0.13, size: 0.2 };
-      ocean.setHandInteraction({ hands: [hand], speed: 0.8 });
-      if (previousPhase !== phase) ocean.startVortex(0.42, 0.55);
+      applyInteractionState({ hands: [hand], speed: 0.8 });
+      if (previousPhase !== phase) {
+        ocean.startVortex(0.42, 0.55);
+        water.addRipple(0.42, 0.55, 1.35);
+      }
       gestureElements.label.textContent = 'ぐるぐる渦潮が発生！';
     } else if (phase === 'special') {
       const charge = Math.min(1, (cycle - 8.4) / 3);
-      ocean.setHandInteraction({
+      applyInteractionState({
         hands: [{ x: 0.38, y: 0.58, size: 0.2 }, { x: 0.62, y: 0.58, size: 0.2 }],
         charge
       });
@@ -136,18 +148,19 @@ function startPreview() {
       gestureElements.progress.style.setProperty('--progress', `${charge * 100}%`);
       if (charge >= 1 && !sharkLaunched) {
         ocean.launchShark(0.5, 0.58, { x: 0.86, y: -0.5 });
+        water.addRipple(0.5, 0.58, 1.6);
         sharkLaunched = true;
         gestureElements.label.textContent = '必殺！サメ・ストリーム！';
       }
     } else if (phase === 'garden-eel') {
-      ocean.setHandInteraction({ hands: [{ x: 0.32, y: 0.58, size: 0.2 }], speed: 0 });
+      applyInteractionState({ hands: [{ x: 0.32, y: 0.58, size: 0.2 }], speed: 0 });
       if (!eelLaunched) {
         ocean.summonGardenEels(0.32, 0.58);
         eelLaunched = true;
       }
       gestureElements.label.textContent = '人差し指で、ちんあなごを呼ぼう';
     } else if (phase === 'crab-walk') {
-      ocean.setHandInteraction({ hands: [{ x: 0.68, y: 0.58, size: 0.2 }], speed: 0 });
+      applyInteractionState({ hands: [{ x: 0.68, y: 0.58, size: 0.2 }], speed: 0 });
       if (!crabLaunched) {
         ocean.summonWalkingCrabs(0.68, 0.58);
         crabLaunched = true;
@@ -156,6 +169,11 @@ function startPreview() {
     }
     previousPhase = phase;
   }, 50);
+}
+
+function applyInteractionState(state) {
+  ocean.setHandInteraction(state);
+  water.setHands(state.hands || [], state.charge || 0);
 }
 
 async function startCamera(automatic) {
@@ -224,18 +242,20 @@ function showTemporaryStatus(message) {
 }
 
 function resize() {
-  const dpr = Math.min(devicePixelRatio || 1, 1.5);
+  const dpr = Math.min(devicePixelRatio || 1, 1.35);
   canvas.width = Math.max(1, Math.round(innerWidth * dpr));
   canvas.height = Math.max(1, Math.round(innerHeight * dpr));
   canvas.style.width = `${innerWidth}px`;
   canvas.style.height = `${innerHeight}px`;
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
+  water.resize(innerWidth, innerHeight, dpr);
 }
 
 function render(timestamp) {
   const delta = Math.min((timestamp - lastFrame) / 1000, 0.05);
   lastFrame = timestamp;
   context.clearRect(0, 0, innerWidth, innerHeight);
+  water.render(timestamp / 1000, delta);
   ocean.draw(context, innerWidth, innerHeight, timestamp / 1000, delta);
   requestAnimationFrame(render);
 }

@@ -8,20 +8,30 @@
 html, body, #app { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 body { background: #03172c; user-select: none; -webkit-user-select: none; }
 
-#camera, .ocean-color, #ocean { position: fixed; inset: 0; width: 100%; height: 100%; }
+#camera, #water-scene, .ocean-color, #ocean { position: fixed; inset: 0; width: 100%; height: 100%; }
 #camera {
   z-index: 0;
   object-fit: cover;
   transform: scaleX(-1);
   background: radial-gradient(circle at 50% 24%, #177aa1, #061c39 72%);
+  opacity: 0;
 }
+
+#water-scene {
+  z-index: 0;
+  display: block;
+  background: radial-gradient(circle at 50% 18%, #168eb8, #041a38 74%);
+}
+
+#app.is-webgl-disabled #camera { opacity: 1; }
+#app.is-webgl-disabled #water-scene { display: none; }
 
 .ocean-color {
   z-index: 1;
   pointer-events: none;
   background:
-    radial-gradient(circle at 50% -8%, rgba(181, 247, 255, .30), transparent 44%),
-    linear-gradient(180deg, rgba(4, 166, 209, .12), rgba(2, 53, 108, .19) 65%, rgba(1, 17, 55, .31));
+    radial-gradient(circle at 50% -8%, rgba(181, 247, 255, .18), transparent 44%),
+    linear-gradient(180deg, rgba(4, 166, 209, .06), rgba(2, 53, 108, .11) 65%, rgba(1, 17, 55, .18));
   mix-blend-mode: screen;
 }
 

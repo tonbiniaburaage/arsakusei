@@ -3,10 +3,7 @@ const TAU = Math.PI * 2;
 export class AmbientOcean {
   constructor() {
     this.seed = 0x51ea;
-    this.sweepFish = this.makeFish(22, 'sweep');
-    this.ringFish = this.makeFish(14, 'ring');
-    this.laneFish = this.makeFish(10, 'lane');
-    this.driftSchools = this.makeDriftSchools(8);
+    this.boidSchools = this.makeBoidSchools();
     this.bubbles = this.makeBubbles(18);
     this.ripples = [];
     this.summonedCreatures = [];
@@ -43,6 +40,37 @@ export class AmbientOcean {
     }));
   }
 
+  makeBoidSchools() {
+    const layouts = [
+      { count: 28, x: 0.18, y: 0.25, scale: 0.72, direction: 1 },
+      { count: 24, x: 0.76, y: 0.29, scale: 0.58, direction: -1 },
+      { count: 26, x: 0.38, y: 0.53, scale: 0.86, direction: 1 },
+      { count: 20, x: 0.82, y: 0.68, scale: 1.04, direction: -1 },
+      { count: 22, x: 0.2, y: 0.78, scale: 0.64, direction: 1 },
+      { count: 18, x: 0.58, y: 0.16, scale: 0.48, direction: -1 }
+    ];
+    return layouts.map((layout, schoolIndex) => ({
+      ...layout,
+      phase: this.random() * TAU,
+      fish: Array.from({ length: layout.count }, (_, index) => {
+        const angle = this.random() * TAU;
+        const speed = 0.025 + this.random() * 0.028;
+        return {
+          school: schoolIndex,
+          index,
+          x: layout.x + (this.random() - 0.5) * 0.22,
+          y: layout.y + (this.random() - 0.5) * 0.12,
+          vx: Math.cos(angle) * speed + layout.direction * 0.018,
+          vy: Math.sin(angle) * speed * 0.55,
+          size: this.random() > 0.88 ? 1.5 + this.random() * 0.75 : 0.48 + this.random() * 1.02,
+          phase: this.random() * TAU,
+          tone: this.random(),
+          touch: 0
+        };
+      })
+    }));
+  }
+
   makeBubbles(count) {
     return Array.from({ length: count }, () => ({
       x: this.random(),
@@ -75,10 +103,7 @@ export class AmbientOcean {
     ctx.save();
     this.drawWater(ctx, width, height, time);
     this.drawHandFields(ctx, width, height, time);
-    this.drawSweepSchool(ctx, width, height, this.swimTime);
-    this.drawRingSchool(ctx, width, height, this.swimTime);
-    this.drawLaneSchool(ctx, width, height, this.swimTime);
-    this.drawDriftSchools(ctx, width, height, this.swimTime);
+    this.drawBoidSchools(ctx, width, height, this.swimTime, delta);
     this.drawVortexSchool(ctx, width, height, time);
     this.drawGardenEels(ctx, width, height, time, delta);
     this.drawWalkingCrabs(ctx, width, height, time, delta);
@@ -114,17 +139,15 @@ export class AmbientOcean {
     const origin = position || this.lastHands[0] || { x: 0.5, y: 0.55 };
     this.hands = [];
     this.lastHands = [origin];
-    const allFish = [
-      ...this.sweepFish,
-      ...this.ringFish,
-      ...this.laneFish,
-      ...this.driftSchools.flatMap((school) => school.fish)
-    ];
+    const allFish = this.boidSchools.flatMap((school) => school.fish);
     for (const fish of allFish) {
-      const angle = Math.atan2((fish.lastY ?? this.random()) - origin.y, (fish.lastX ?? this.random()) - origin.x);
-      const kick = 0.14 + this.random() * 0.13;
-      fish.ivx = (fish.ivx || 0) + Math.cos(angle) * kick;
-      fish.ivy = (fish.ivy || 0) + Math.sin(angle) * kick;
+      const angle = Math.atan2(fish.y - origin.y, fish.x - origin.x);
+      const distance = Math.hypot(fish.x - origin.x, fish.y - origin.y);
+      if (distance > 0.48) continue;
+      const kick = (0.16 + this.random() * 0.13) * (1 - distance / 0.6);
+      fish.vx += Math.cos(angle) * kick;
+      fish.vy += Math.sin(angle) * kick;
+      fish.touch = 1;
     }
     this.reactToMotion(origin.x, origin.y, 0.9);
   }
@@ -183,8 +206,18 @@ export class AmbientOcean {
 
   reactToMotion(x, y, intensity = 0.5) {
     this.motionBoost = Math.max(this.motionBoost, 0.45 + intensity * 0.55);
-    this.ripples.push({ x, y, age: 0, life: 1.25, intensity });
-    if (this.ripples.length > 5) this.ripples.shift();
+    this.ripples.push({ x, y, age: 0, life: 2.1, intensity, phase: this.random() * TAU });
+    if (this.ripples.length > 10) this.ripples.shift();
+    for (const fish of this.boidSchools.flatMap((school) => school.fish)) {
+      const dx = fish.x - x;
+      const dy = fish.y - y;
+      const distance = Math.hypot(dx, dy);
+      if (distance > 0.24 || distance < 0.006) continue;
+      const force = (1 - distance / 0.24) * (0.035 + intensity * 0.055);
+      fish.vx += dx / distance * force;
+      fish.vy += dy / distance * force;
+      fish.touch = Math.max(fish.touch, intensity);
+    }
   }
 
   summonCreature(type, x, y, { special = false } = {}) {
@@ -332,6 +365,135 @@ export class AmbientOcean {
       }
     }
     ctx.restore();
+  }
+
+  drawBoidSchools(ctx, width, height, time, delta) {
+    const dt = Math.min(0.034, Math.max(0.008, delta));
+    const aspect = width / Math.max(1, height);
+    const attractingHands = this.hands.filter((hand) => !hand.suppressAttraction);
+
+    for (const school of this.boidSchools) {
+      const targetX = school.x + Math.sin(time * 0.075 + school.phase) * 0.2;
+      const targetY = school.y + Math.cos(time * 0.09 + school.phase) * 0.075;
+      const updates = [];
+
+      for (const fish of school.fish) {
+        let separationX = 0;
+        let separationY = 0;
+        let alignmentX = 0;
+        let alignmentY = 0;
+        let cohesionX = 0;
+        let cohesionY = 0;
+        let neighborCount = 0;
+
+        for (const neighbor of school.fish) {
+          if (neighbor === fish) continue;
+          const dx = neighbor.x - fish.x;
+          const dy = neighbor.y - fish.y;
+          const distanceSquared = dx * dx * aspect * aspect + dy * dy;
+          if (distanceSquared > 0.018 || distanceSquared < 0.000001) continue;
+          const distance = Math.sqrt(distanceSquared);
+          neighborCount += 1;
+          alignmentX += neighbor.vx;
+          alignmentY += neighbor.vy;
+          cohesionX += neighbor.x;
+          cohesionY += neighbor.y;
+          if (distance < 0.052) {
+            const separation = (0.052 - distance) / 0.052;
+            separationX -= dx / distance * separation;
+            separationY -= dy / distance * separation;
+          }
+        }
+
+        let ax = Math.sin(time * 0.43 + fish.phase) * 0.006;
+        let ay = Math.cos(time * 0.37 + fish.phase * 1.7) * 0.004;
+        if (neighborCount) {
+          alignmentX /= neighborCount;
+          alignmentY /= neighborCount;
+          cohesionX = cohesionX / neighborCount - fish.x;
+          cohesionY = cohesionY / neighborCount - fish.y;
+          ax += (alignmentX - fish.vx) * 0.72 + cohesionX * 0.17 + separationX * 0.38;
+          ay += (alignmentY - fish.vy) * 0.72 + cohesionY * 0.17 + separationY * 0.38;
+        }
+
+        ax += (targetX - fish.x) * 0.022 + school.direction * 0.0028;
+        ay += (targetY - fish.y) * 0.018;
+
+        for (const hand of attractingHands) {
+          const dx = hand.x - fish.x;
+          const dy = hand.y - fish.y;
+          const distance = Math.max(0.004, Math.hypot(dx * aspect, dy));
+          if (distance > 0.44) continue;
+          if (distance < 0.075) {
+            const touchForce = (0.075 - distance) * 4.8;
+            ax -= dx / distance * touchForce;
+            ay -= dy / distance * touchForce;
+            fish.touch = 1;
+          } else {
+            const pull = (1 - distance / 0.44) * 0.052;
+            ax += dx / distance * pull;
+            ay += dy / distance * pull;
+          }
+        }
+
+        if (this.current.strength > 0) {
+          ax += this.current.x * this.current.strength * 0.13;
+          ay += this.current.y * this.current.strength * 0.13;
+        }
+        if (this.vortex) {
+          const dx = fish.x - this.vortex.x;
+          const dy = fish.y - this.vortex.y;
+          const distance = Math.max(0.025, Math.hypot(dx * aspect, dy));
+          if (distance < 0.6) {
+            const force = (1 - distance / 0.6) * this.vortex.strength;
+            ax += (-dy / distance * 0.36 - dx * 0.13) * force;
+            ay += (dx / distance * 0.36 - dy * 0.13) * force;
+          }
+        }
+
+        const margin = 0.055;
+        if (fish.x < margin) ax += (margin - fish.x) * 1.2;
+        if (fish.x > 1 - margin) ax -= (fish.x - (1 - margin)) * 1.2;
+        if (fish.y < margin) ay += (margin - fish.y) * 1.2;
+        if (fish.y > 1 - margin) ay -= (fish.y - (1 - margin)) * 1.2;
+
+        let vx = fish.vx + ax * dt;
+        let vy = fish.vy + ay * dt;
+        const speed = Math.hypot(vx, vy);
+        const minSpeed = 0.018 + school.scale * 0.009;
+        const maxSpeed = 0.095 + this.motionBoost * 0.085 + fish.touch * 0.04;
+        if (speed > maxSpeed) {
+          vx = vx / speed * maxSpeed;
+          vy = vy / speed * maxSpeed;
+        } else if (speed < minSpeed) {
+          const heading = speed > 0.0001 ? Math.atan2(vy, vx) : fish.phase;
+          vx = Math.cos(heading) * minSpeed;
+          vy = Math.sin(heading) * minSpeed;
+        }
+        updates.push({ fish, vx, vy });
+      }
+
+      for (const update of updates) {
+        const { fish, vx, vy } = update;
+        fish.vx = vx;
+        fish.vy = vy;
+        fish.x += vx * dt;
+        fish.y += vy * dt;
+        fish.touch = Math.max(0, fish.touch - dt * 1.8);
+        const heading = Math.atan2(vy, vx);
+        const speedStretch = 1 + Math.min(0.2, Math.hypot(vx, vy) * 0.9);
+        this.drawFish(
+          ctx,
+          fish.x * width,
+          fish.y * height,
+          heading,
+          Math.min(width, height) * 0.021 * fish.size * school.scale * speedStretch,
+          fish.tone,
+          0.32 + school.scale * 0.13 + fish.touch * 0.12,
+          time * (5.4 + Math.hypot(vx, vy) * 24) + fish.phase
+        );
+      }
+    }
   }
 
   drawSweepSchool(ctx, width, height, time) {
@@ -490,7 +652,7 @@ export class AmbientOcean {
     return { x: fish.lastX, y: fish.lastY, vx: fish.ivx, vy: fish.ivy };
   }
 
-  drawFish(ctx, x, y, rotation, size, tone, alpha) {
+  drawFish(ctx, x, y, rotation, size, tone, alpha, swimPhase = 0) {
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(rotation);
@@ -508,12 +670,20 @@ export class AmbientOcean {
     ctx.bezierCurveTo(-0.36, -0.53, 0.42, -0.48, 0.88, -0.08);
     ctx.bezierCurveTo(0.42, 0.44, -0.36, 0.48, -0.8, 0);
     ctx.fill();
+    const tailWave = Math.sin(swimPhase) * 0.18;
     ctx.beginPath();
     ctx.moveTo(-0.68, 0);
-    ctx.lineTo(-1.22, -0.48);
-    ctx.lineTo(-1.08, 0);
-    ctx.lineTo(-1.22, 0.48);
+    ctx.lineTo(-1.2, -0.48 + tailWave);
+    ctx.lineTo(-1.07, tailWave * 0.35);
+    ctx.lineTo(-1.2, 0.48 + tailWave);
     ctx.closePath();
+    ctx.fill();
+
+    ctx.globalAlpha = alpha * 0.42;
+    ctx.beginPath();
+    ctx.moveTo(-0.05, -0.28);
+    ctx.quadraticCurveTo(-0.25, -0.62 - tailWave * 0.35, -0.46, -0.3);
+    ctx.quadraticCurveTo(-0.25, -0.34, -0.05, -0.28);
     ctx.fill();
 
     ctx.globalAlpha = alpha * 0.9;
@@ -879,29 +1049,48 @@ export class AmbientOcean {
     for (const ripple of this.ripples) {
       ripple.age += delta;
       ripple.life -= delta;
-      const progress = Math.min(1, ripple.age / 1.15);
-      const alpha = Math.max(0, 1 - progress);
+      const progress = Math.min(1, ripple.age / 1.85);
+      const alpha = Math.max(0, Math.sin(Math.min(1, ripple.age / 0.18) * Math.PI * 0.5) * (1 - progress));
       const x = ripple.x * width;
       const y = ripple.y * height;
-      const radius = (24 + progress * Math.min(width, height) * 0.17) * (0.8 + ripple.intensity * 0.35);
-      const glow = ctx.createRadialGradient(x, y, 0, x, y, radius * 0.58);
-      glow.addColorStop(0, `rgba(226, 253, 255, ${alpha * 0.24})`);
+      const radius = (18 + progress * Math.min(width, height) * 0.24) * (0.78 + ripple.intensity * 0.34);
+      const glow = ctx.createRadialGradient(x, y, 0, x, y, radius * 0.78);
+      glow.addColorStop(0, `rgba(226, 253, 255, ${alpha * 0.16})`);
+      glow.addColorStop(0.52, `rgba(80, 223, 255, ${alpha * 0.055})`);
       glow.addColorStop(1, 'rgba(80, 223, 255, 0)');
       ctx.fillStyle = glow;
       ctx.beginPath();
-      ctx.arc(x, y, radius * 0.58, 0, TAU);
+      ctx.arc(x, y, radius * 0.78, 0, TAU);
       ctx.fill();
-      ctx.strokeStyle = `rgba(172, 244, 255, ${alpha * 0.72})`;
-      ctx.lineWidth = 1.5 + ripple.intensity * 1.5;
-      ctx.beginPath();
-      ctx.arc(x, y, radius, 0, TAU);
-      ctx.stroke();
-      ctx.strokeStyle = `rgba(132, 218, 255, ${alpha * 0.38})`;
-      ctx.beginPath();
-      ctx.arc(x, y, radius * 0.64, 0, TAU);
-      ctx.stroke();
+      for (let ring = 0; ring < 4; ring += 1) {
+        const ringRadius = radius * (1 - ring * 0.15) - ring * 8;
+        if (ringRadius <= 0) continue;
+        ctx.strokeStyle = `rgba(${155 - ring * 7}, ${239 - ring * 4}, 255, ${alpha * (0.72 - ring * 0.12)})`;
+        ctx.lineWidth = Math.max(1, 2.4 + ripple.intensity * 1.6 - ring * 0.42);
+        ctx.beginPath();
+        ctx.ellipse(
+          x + Math.sin(ripple.phase + ring) * progress * 5,
+          y + Math.cos(ripple.phase * 1.3 + ring) * progress * 3,
+          ringRadius,
+          ringRadius * (0.79 + ring * 0.025),
+          Math.sin(ripple.phase) * 0.08,
+          0,
+          TAU
+        );
+        ctx.stroke();
+      }
+      for (let sparkle = 0; sparkle < 5; sparkle += 1) {
+        const angle = ripple.phase + sparkle / 5 * TAU + progress * 0.4;
+        const orbit = radius * (0.52 + sparkle % 2 * 0.18);
+        ctx.globalAlpha = alpha * 0.62;
+        ctx.fillStyle = sparkle % 2 ? '#dffeff' : '#82eaff';
+        ctx.beginPath();
+        ctx.arc(x + Math.cos(angle) * orbit, y + Math.sin(angle) * orbit * 0.79, 1.4 + ripple.intensity * 1.7, 0, TAU);
+        ctx.fill();
+      }
     }
     this.ripples = this.ripples.filter((ripple) => ripple.life > 0);
+    ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
   }
 }
