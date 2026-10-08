@@ -4,7 +4,7 @@ const PALM_LANDMARKS = [0, 5, 9, 13, 17];
 const SAMPLE_INTERVAL_MS = 52;
 const CIRCLE_WINDOW_MS = 1450;
 const CIRCLE_TRIGGER_RADIANS = Math.PI * 1.52;
-const SPECIAL_CHARGE_SECONDS = 3;
+const SPECIAL_CHARGE_SECONDS = 2;
 
 export class GestureController {
   constructor(video, elements, callbacks = {}) {
@@ -205,10 +205,19 @@ export class GestureController {
       }
     }
 
+    const singleRaisedPalm = hands.length === 1
+      && hands[0].gesture === 'Open_Palm'
+      && hands[0].gestureScore >= 0.45
+      && hands[0].y <= 0.42;
     this.callbacks.onInteraction?.({
       hands: hands.map((hand) => ({
         ...hand,
-        suppressAttraction: chargingHands.has(hand) || hand.gesture === 'Pointing_Up'
+        gathering: singleRaisedPalm,
+        // 魚を集めるのは、片手を上げて開いた手のひらを見せたときだけ。
+        // それ以外の手は、動いたときだけ水流として魚へ作用する。
+        suppressAttraction: chargingHands.has(hand)
+          || hand.gesture === 'Pointing_Up'
+          || !singleRaisedPalm
       })),
       velocity: this.smoothedVelocity,
       speed,
@@ -367,7 +376,7 @@ export class GestureController {
   updateGuide(label, progress, twoHand) {
     this.elements.guide.classList.toggle('is-two-hand', Boolean(twoHand));
     this.elements.guide.classList.toggle('is-tracking', progress > 0);
-    this.elements.label.textContent = label;
+    this.elements.label.textContent = '手をかざしてみよう';
     const progressValue = `${Math.round(Math.min(1, progress) * 100)}%`;
     if (progressValue !== this.lastUiProgress) {
       this.elements.progress.style.setProperty('--progress', progressValue);

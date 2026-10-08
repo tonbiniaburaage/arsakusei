@@ -1,7 +1,8 @@
-import { AmbientOcean } from './ambient-ocean.js?v=20261009-pc6';
-import { CameraMotionDetector } from './motion-detector.js?v=20261009-pc6';
-import { GestureController } from './gesture-controller.js?v=20261009-pc6';
-import { WaterRenderer } from './water-renderer.js?v=20261009-pc6';
+import { AmbientOcean } from './ambient-ocean.js?v=20261009-pc12';
+import { CameraMotionDetector } from './motion-detector.js?v=20261009-pc12';
+import { GestureController } from './gesture-controller.js?v=20261009-pc12';
+import { WaterRenderer } from './water-renderer.js?v=20261009-pc12';
+import { RescueRelay } from './rescue-relay.js?v=20261009-pc12';
 
 const app = document.querySelector('#app');
 const video = document.querySelector('#camera');
@@ -24,7 +25,21 @@ const gestureElements = {
 };
 
 const ocean = new AmbientOcean();
+const rescue = new RescueRelay({
+  trigger: document.querySelector('#rescue-trigger'),
+  triggerProgress: document.querySelector('#rescue-trigger-progress'),
+  counter: document.querySelector('#rescue-counter'),
+  counterValue: document.querySelector('#rescue-counter-value'),
+  instruction: document.querySelector('#rescue-instruction'),
+  logo: document.querySelector('#rescue-logo'),
+  onStatus: showTemporaryStatus,
+  onModeChange(mode) {
+    app.classList.toggle('is-rescue-playing', mode !== 'idle');
+    if (mode === 'playing') ocean.cancelInteractiveEffects();
+  }
+});
 const motion = new CameraMotionDetector(video, ({ x, y, intensity }) => {
+  if (rescue.isActive()) return;
   ocean.reactToMotion(x, y, intensity);
   water.addRipple(x, y, intensity);
 });
@@ -33,22 +48,27 @@ const gestures = new GestureController(video, gestureElements, {
     applyInteractionState(state);
   },
   onHandsLost(position) {
-    ocean.releaseHands(position);
+    rescue.setInteraction({ hands: [] });
     water.setHands([], 0);
+    if (rescue.isActive()) return;
+    ocean.releaseHands(position);
     water.addRipple(position?.x ?? 0.5, position?.y ?? 0.55, 1);
     showTemporaryStatus('魚たちがびっくりして散らばった！');
   },
   onVortex({ x, y }) {
+    if (rescue.isActive()) return;
     ocean.startVortex(x, y);
     water.addRipple(x, y, 1.35);
     showTemporaryStatus('ぐるぐる渦潮が発生！');
   },
   onSpecial({ x, y, direction }) {
+    if (rescue.isActive()) return;
     ocean.launchShark(x, y, direction);
     water.addRipple(x, y, 1.6);
     showTemporaryStatus('光のクジラが横切る！');
   },
   onCreatureGesture({ type, x, y, stage = 1 }) {
+    if (rescue.isActive()) return;
     if (type === 'garden-eel') {
       ocean.summonGardenEels(x, y, stage);
       showTemporaryStatus(`ちんあなごが増えた！ ${stage}/3`);
@@ -68,6 +88,10 @@ let starting = false;
 let lastFrame = performance.now();
 let gestureStatusTimer = null;
 let previewTimer = null;
+let cameraRecoveryTimer = null;
+let cameraHealthTimer = null;
+let lastCameraTime = 0;
+let stalledCameraChecks = 0;
 const previewMode = new URLSearchParams(location.search).get('preview') === '1';
 
 cameraButton.addEventListener('click', () => startCamera(false));
@@ -140,7 +164,7 @@ function startPreview() {
       }
       gestureElements.label.textContent = 'ぐるぐる渦潮が発生！';
     } else if (phase === 'special') {
-      const charge = Math.min(1, (cycle - 8.4) / 3);
+      const charge = Math.min(1, (cycle - 8.4) / 2);
       applyInteractionState({
         hands: [{ x: 0.38, y: 0.58, size: 0.2 }, { x: 0.62, y: 0.58, size: 0.2 }],
         charge
@@ -168,13 +192,16 @@ function startPreview() {
       }
       gestureElements.label.textContent = 'ピースで、カニたちがお散歩！';
     }
+    gestureElements.label.textContent = '手をかざしてみよう';
     previousPhase = phase;
   }, 50);
 }
 
 function applyInteractionState(state) {
-  ocean.setHandInteraction(state);
-  water.setHands(state.hands || [], state.charge || 0);
+  rescue.setInteraction(state);
+  if (rescue.isActive()) ocean.setHandInteraction({ hands: [] });
+  else ocean.setHandInteraction(state);
+  water.setHands(state.hands || [], rescue.isActive() ? 0 : state.charge || 0);
 }
 
 async function startCamera(automatic) {
@@ -189,8 +216,11 @@ async function startCamera(automatic) {
       throw new Error('このブラウザはカメラに対応していません');
     }
     stream = await requestCameraStream();
+    const videoTrack = stream.getVideoTracks()[0];
+    videoTrack?.addEventListener('ended', scheduleCameraRecovery, { once: true });
     video.srcObject = stream;
     await video.play();
+    startCameraHealthMonitor();
     motion.start();
     app.classList.remove('is-starting');
     app.classList.add('is-running');
@@ -222,10 +252,42 @@ function stopCamera() {
   motion.stop();
   gestures.stop();
   clearTimeout(gestureStatusTimer);
+  clearTimeout(cameraRecoveryTimer);
+  clearInterval(cameraHealthTimer);
+  cameraHealthTimer = null;
   if (previewTimer) clearInterval(previewTimer);
   stream?.getTracks().forEach((track) => track.stop());
   stream = null;
   app.classList.remove('is-water-rendering');
+}
+
+function startCameraHealthMonitor() {
+  clearInterval(cameraHealthTimer);
+  lastCameraTime = video.currentTime;
+  stalledCameraChecks = 0;
+  cameraHealthTimer = setInterval(() => {
+    if (!stream || document.visibilityState === 'hidden') return;
+    const track = stream.getVideoTracks()[0];
+    const isAdvancing = video.currentTime > lastCameraTime + 0.01;
+    stalledCameraChecks = track?.readyState === 'live' && isAdvancing ? 0 : stalledCameraChecks + 1;
+    lastCameraTime = video.currentTime;
+    if (stalledCameraChecks < 3) return;
+    clearInterval(cameraHealthTimer);
+    cameraHealthTimer = null;
+    motion.stop();
+    gestures.stop();
+    stream.getTracks().forEach((streamTrack) => streamTrack.stop());
+    stream = null;
+    scheduleCameraRecovery();
+  }, 10000);
+}
+
+function scheduleCameraRecovery() {
+  if (previewMode || document.visibilityState === 'hidden') return;
+  stream = null;
+  status.textContent = 'カメラを再接続しています…';
+  clearTimeout(cameraRecoveryTimer);
+  cameraRecoveryTimer = setTimeout(() => startCamera(true), 1200);
 }
 
 async function requestCameraStream() {
@@ -270,6 +332,7 @@ function render(timestamp) {
   const waterHasCamera = water.render(timestamp / 1000, delta);
   if (!previewMode) app.classList.toggle('is-water-rendering', waterHasCamera);
   ocean.draw(context, innerWidth, innerHeight, timestamp / 1000, delta);
+  rescue.draw(context, innerWidth, innerHeight, timestamp / 1000, delta);
   requestAnimationFrame(render);
 }
 

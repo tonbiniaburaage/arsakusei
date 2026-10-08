@@ -22,14 +22,6 @@ uniform vec3 uHands[${MAX_HANDS}];
 uniform float uHandCount;
 uniform float uCharge;
 
-float caustic(vec2 p, float time) {
-  float a = sin(p.x * 24.0 + sin(p.y * 9.0 - time * 0.7) + time * 0.85);
-  float b = sin(p.y * 27.0 + sin(p.x * 8.0 + time * 0.55) - time * 0.62);
-  float c = sin((p.x + p.y) * 18.0 - time * 0.48);
-  float lines = abs(a + b + c) / 3.0;
-  return pow(1.0 - smoothstep(0.08, 0.55, lines), 2.2);
-}
-
 void main() {
   vec2 uv = vUv;
   vec2 scaled = vec2((uv.x - 0.5) * uAspect, uv.y - 0.5);
@@ -65,17 +57,8 @@ void main() {
   vec3 fallback = mix(vec3(0.015, 0.12, 0.25), vec3(0.02, 0.47, 0.64), pow(1.0 - uv.y, 1.7));
   vec3 color = mix(fallback, cameraColor, uHasCamera);
 
-  float depth = smoothstep(0.0, 1.0, uv.y);
-  color *= vec3(0.90, 0.98, 1.02);
-  color = mix(color, vec3(0.018, 0.15, 0.27), depth * 0.09);
-  float light = caustic(uv * vec2(uAspect, 1.0), uTime);
-  light *= mix(0.18, 0.035, depth);
-  color += vec3(0.22, 0.78, 0.96) * light;
-  color += vec3(0.32, 0.9, 1.0) * rippleLight * 0.09;
-  color += vec3(0.28, 0.84, 1.0) * handGlow * (0.018 + uCharge * 0.04);
-
-  float surfaceGlow = pow(max(0.0, 1.0 - length(vec2((uv.x - 0.5) * 0.8, uv.y * 1.25))), 3.0);
-  color += vec3(0.20, 0.62, 0.78) * surfaceGlow * 0.055;
+  color += vec3(0.72, 0.94, 1.0) * rippleLight * 0.055;
+  color += vec3(0.72, 0.95, 1.0) * handGlow * (0.012 + uCharge * 0.025);
   gl_FragColor = vec4(color, 1.0);
 }`;
 
@@ -95,6 +78,17 @@ export class WaterRenderer {
     this.charge = 0;
     this.lastRenderAt = -Infinity;
     this.hasCameraFrame = false;
+    this.rippleData = new Float32Array(MAX_RIPPLES * 3);
+    this.handData = new Float32Array(MAX_HANDS * 3);
+    canvas?.addEventListener('webglcontextlost', (event) => {
+      event.preventDefault();
+      this.available = false;
+      this.hasCameraFrame = false;
+    });
+    canvas?.addEventListener('webglcontextrestored', () => {
+      // 展示中にGPUが一時停止した場合は、すべてのWebGL資源を確実に作り直す。
+      location.reload();
+    });
     if (this.available) this.initialize();
   }
 
@@ -201,19 +195,29 @@ export class WaterRenderer {
         hasCamera = 0;
       }
     }
-    const rippleData = new Float32Array(MAX_RIPPLES * 3);
-    this.ripples.forEach((ripple, index) => rippleData.set([ripple.x, ripple.y, ripple.age], index * 3));
-    const handData = new Float32Array(MAX_HANDS * 3);
-    this.hands.forEach((hand, index) => handData.set([hand.x, hand.y, hand.size], index * 3));
+    this.rippleData.fill(0);
+    this.handData.fill(0);
+    this.ripples.forEach((ripple, index) => {
+      const offset = index * 3;
+      this.rippleData[offset] = ripple.x;
+      this.rippleData[offset + 1] = ripple.y;
+      this.rippleData[offset + 2] = ripple.age;
+    });
+    this.hands.forEach((hand, index) => {
+      const offset = index * 3;
+      this.handData[offset] = hand.x;
+      this.handData[offset + 1] = hand.y;
+      this.handData[offset + 2] = hand.size;
+    });
     gl.enableVertexAttribArray(this.locations.position);
     gl.vertexAttribPointer(this.locations.position, 2, gl.FLOAT, false, 0, 0);
     gl.uniform1i(this.locations.camera, 0);
     gl.uniform1f(this.locations.time, time);
     gl.uniform1f(this.locations.hasCamera, hasCamera);
     gl.uniform1f(this.locations.aspect, this.canvas.width / Math.max(1, this.canvas.height));
-    gl.uniform3fv(this.locations.ripples, rippleData);
+    gl.uniform3fv(this.locations.ripples, this.rippleData);
     gl.uniform1f(this.locations.rippleCount, this.ripples.length);
-    gl.uniform3fv(this.locations.hands, handData);
+    gl.uniform3fv(this.locations.hands, this.handData);
     gl.uniform1f(this.locations.handCount, this.hands.length);
     gl.uniform1f(this.locations.charge, this.charge);
     gl.drawArrays(gl.TRIANGLES, 0, 6);

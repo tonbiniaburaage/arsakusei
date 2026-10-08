@@ -8,7 +8,7 @@
 html, body, #app { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 body { background: #03172c; user-select: none; -webkit-user-select: none; }
 
-#camera, #water-scene, .ocean-color, #ocean { position: fixed; inset: 0; width: 100%; height: 100%; }
+#camera, #water-scene, #ocean { position: fixed; inset: 0; width: 100%; height: 100%; }
 #camera {
   z-index: 0;
   object-fit: cover;
@@ -30,16 +30,76 @@ body { background: #03172c; user-select: none; -webkit-user-select: none; }
 #app.is-webgl-disabled #camera { opacity: 1; }
 #app.is-webgl-disabled #water-scene { display: none; }
 
-.ocean-color {
-  z-index: 1;
+#ocean { z-index: 2; pointer-events: none; }
+
+.rescue-trigger,
+.rescue-counter {
+  position: fixed;
+  z-index: 6;
+  top: 26px;
+  right: 30px;
+  width: min(260px, 24vw);
+  overflow: hidden;
+  border: 1px solid rgba(193, 246, 255, .23);
+  border-radius: 18px;
+  color: rgba(236, 253, 255, .82);
+  text-align: center;
+  text-shadow: 0 2px 14px rgba(0, 14, 42, .9);
+  background: rgba(3, 42, 79, .34);
+  box-shadow: 0 12px 38px rgba(0, 18, 50, .18), inset 0 1px rgba(255,255,255,.07);
+  backdrop-filter: blur(9px);
   pointer-events: none;
-  background:
-    radial-gradient(circle at 50% -8%, rgba(181, 247, 255, .09), transparent 44%),
-    linear-gradient(180deg, rgba(4, 166, 209, .025), rgba(2, 53, 108, .045) 65%, rgba(1, 17, 55, .075));
-  mix-blend-mode: screen;
 }
 
-#ocean { z-index: 2; pointer-events: none; }
+.rescue-trigger { --rescue-progress: 0%; padding: 13px 18px 15px; opacity: .6; transition: opacity .25s ease, box-shadow .25s ease; }
+.rescue-trigger span { display: block; font-size: clamp(12px, 1.05vw, 16px); font-weight: 900; letter-spacing: .04em; }
+.rescue-trigger small { display: block; margin-top: 3px; color: rgba(202,241,250,.68); font-size: 10px; }
+.rescue-trigger i { position: absolute; left: 0; bottom: 0; width: var(--rescue-progress); height: 4px; background: linear-gradient(90deg, #53ddff, #fff, #bda8ff); box-shadow: 0 0 18px #56e6ff; transition: width .06s linear; }
+.rescue-trigger.is-holding { opacity: 1; box-shadow: 0 0 36px rgba(80,229,255,.28), inset 0 1px rgba(255,255,255,.12); }
+
+.rescue-counter { padding: 11px 20px 13px; background: rgba(2, 28, 68, .68); }
+.rescue-counter span { display: block; color: #96efff; font-size: 9px; font-weight: 900; letter-spacing: .2em; }
+.rescue-counter strong { display: block; margin-top: 1px; font-size: clamp(22px, 2.2vw, 34px); }
+.rescue-counter b { color: #fff; font-size: 1.2em; }
+
+.rescue-instruction {
+  position: fixed;
+  z-index: 6;
+  top: 25px;
+  left: 50%;
+  margin: 0;
+  padding: 12px 24px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(204,249,255,.34);
+  border-radius: 999px;
+  color: #f1feff;
+  background: rgba(3,39,82,.64);
+  box-shadow: 0 0 30px rgba(65,221,255,.18);
+  backdrop-filter: blur(10px);
+  font-size: clamp(13px, 1.2vw, 18px);
+  font-weight: 900;
+  text-shadow: 0 2px 15px rgba(0,13,45,.9);
+  pointer-events: none;
+}
+
+#app.is-running.is-rescue-playing .gesture-guide,
+#app.is-running.is-rescue-playing .interaction-hint { opacity: 0; }
+
+.rescue-logo {
+  position: fixed;
+  z-index: 7;
+  left: 50%;
+  top: 50%;
+  width: min(500px, 44vw);
+  max-height: 62vh;
+  object-fit: contain;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(.72);
+  filter: drop-shadow(0 0 14px rgba(101,234,255,.8)) drop-shadow(0 0 45px rgba(54,121,255,.48));
+  pointer-events: none;
+}
+
+.rescue-logo.is-visible { animation: rescue-logo-arrive 6.7s ease both; }
 
 .gesture-guide {
   --progress: 0%;
@@ -205,6 +265,11 @@ body { background: #03172c; user-select: none; -webkit-user-select: none; }
   42% { transform: scale(1.2) rotate(-4deg); }
   100% { transform: scale(1); }
 }
+@keyframes rescue-logo-arrive {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(.65); }
+  18%, 76% { opacity: .84; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.08); }
+}
 
 @media (max-width: 700px) {
   .title-card { padding: 20px 20px 64px; }
@@ -219,6 +284,8 @@ body { background: #03172c; user-select: none; -webkit-user-select: none; }
     gap: 8px;
     padding: 10px 14px;
   }
+  .rescue-trigger, .rescue-counter { top: 18px; right: 16px; width: 190px; }
+  .rescue-instruction { top: 86px; width: calc(100vw - 34px); text-align: center; }
 }
 
 @media (prefers-reduced-motion: reduce) {
