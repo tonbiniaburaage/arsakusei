@@ -126,14 +126,14 @@ export class AmbientOcean {
       size: hand.size || 0.18,
       suppressAttraction: Boolean(hand.suppressAttraction || hand.gesture === 'Pointing_Up')
     }));
-    this.handVelocity.x += (velocity.x - this.handVelocity.x) * 0.72;
-    this.handVelocity.y += (velocity.y - this.handVelocity.y) * 0.72;
+    this.handVelocity.x += (velocity.x - this.handVelocity.x) * 0.46;
+    this.handVelocity.y += (velocity.y - this.handVelocity.y) * 0.46;
     this.handCharge += (charge - this.handCharge) * 0.38;
-    if (speed > 0.2) {
+    if (speed > 0.48) {
       this.current.x = this.handVelocity.x;
       this.current.y = this.handVelocity.y;
-      this.current.strength = Math.min(1.3, speed * 1.05);
-      this.motionBoost = Math.max(this.motionBoost, Math.min(1, speed * 0.65));
+      this.current.strength = Math.min(1, speed * 0.7);
+      this.motionBoost = Math.max(this.motionBoost, Math.min(1, speed * 0.45));
     }
   }
 
@@ -249,6 +249,7 @@ export class AmbientOcean {
         x: Math.max(0.07, Math.min(0.93, x + (index - (amount - 1) / 2) * 0.072)),
         baseY: Math.max(0.78, Math.min(0.94, y + 0.25 + Math.abs(index - (amount - 1) / 2) * 0.018)),
         height: 0.085 + this.random() * 0.055,
+        bend: (this.random() > 0.5 ? 1 : -1) * (0.75 + this.random() * 0.55),
         phase: this.random() * TAU,
         age: 0,
         life: 18 + this.random() * 3
@@ -443,29 +444,22 @@ export class AmbientOcean {
           const dx = hand.x - fish.x;
           const dy = hand.y - fish.y;
           const distance = Math.max(0.004, Math.hypot(dx * aspect, dy));
-          if (distance > 1.45) continue;
+          if (distance > 0.88) continue;
           if (distance < 0.075) {
             const touchForce = (0.075 - distance) * 4.8;
             ax -= dx / distance * touchForce;
             ay -= dy / distance * touchForce;
             fish.touch = 1;
           } else {
-            const influence = 1 - distance / 1.45;
-            const rawDistance = Math.max(0.004, Math.hypot(dx, dy));
-            const pull = influence * 1.28;
+            const pull = (1 - distance / 0.88) * 0.48;
             ax += dx / distance * pull;
             ay += dy / distance * pull;
-            const desiredSpeed = 0.42 + influence * 0.42;
-            ax += (dx / rawDistance * desiredSpeed - fish.vx) * 3.8;
-            ay += (dy / rawDistance * desiredSpeed - fish.vy) * 3.8;
-            ax += this.handVelocity.x * influence * 0.2;
-            ay += this.handVelocity.y * influence * 0.2;
           }
         }
 
         if (this.current.strength > 0) {
-          ax += this.current.x * this.current.strength * 0.34;
-          ay += this.current.y * this.current.strength * 0.34;
+          ax += this.current.x * this.current.strength * 0.13;
+          ay += this.current.y * this.current.strength * 0.13;
         }
         if (this.vortex) {
           const dx = fish.x - this.vortex.x;
@@ -488,7 +482,7 @@ export class AmbientOcean {
         let vy = fish.vy + ay * dt;
         const speed = Math.hypot(vx, vy);
         const minSpeed = (0.018 + school.scale * 0.009) * 1.5;
-        const gathering = attractingHands.length ? 0.68 : 0;
+        const gathering = attractingHands.length ? 0.23 : 0;
         const maxSpeed = 0.165 + gathering + this.motionBoost * 0.1 + fish.touch * 0.055;
         if (speed > maxSpeed) {
           vx = vx / speed * maxSpeed;
@@ -753,7 +747,7 @@ export class AmbientOcean {
       const appear = Math.min(1, eel.age / 0.58);
       const fade = Math.min(1, eel.life / 0.8);
       const length = height * eel.height * appear;
-      const sway = Math.sin(time * 1.35 + eel.phase) * Math.min(width, height) * 0.006;
+      const sway = Math.sin(time * 1.35 + eel.phase) * Math.min(width, height) * 0.004;
       const x = eel.x * width;
       const y = eel.baseY * height;
       const bodyWidth = Math.max(11, Math.min(width, height) * 0.018);
@@ -771,7 +765,16 @@ export class AmbientOcean {
       ctx.shadowBlur = Math.min(width, height) * 0.012;
       ctx.beginPath();
       ctx.moveTo(x, y);
-      ctx.lineTo(x + sway, y - length);
+      ctx.lineTo(x, y - length * 0.48);
+      const bend = bodyWidth * 1.55 * eel.bend + sway;
+      ctx.bezierCurveTo(
+        x,
+        y - length * 0.72,
+        x + bend * 0.28,
+        y - length * 0.94,
+        x + bend,
+        y - length
+      );
       ctx.stroke();
 
       ctx.shadowBlur = 0;
