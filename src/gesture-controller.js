@@ -171,7 +171,7 @@ export class GestureController {
           this.twoHandCharge = 0;
           this.chargeOrigin = null;
           this.callbacks.onSpecial?.({ ...midpoint, direction });
-          this.announce('必殺！サメ・ストリーム！');
+          this.announce('光のクジラが横切る！');
         }
       }
     } else {

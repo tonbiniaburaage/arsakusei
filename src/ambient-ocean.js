@@ -4,7 +4,7 @@ export class AmbientOcean {
   constructor() {
     this.seed = 0x51ea;
     this.boidSchools = this.makeBoidSchools();
-    this.bubbles = this.makeBubbles(18);
+    this.bubbles = this.makeBubbles(48);
     this.ripples = [];
     this.summonedCreatures = [];
     this.gardenEels = [];
@@ -42,27 +42,29 @@ export class AmbientOcean {
 
   makeBoidSchools() {
     const layouts = [
-      { count: 28, x: 0.18, y: 0.25, scale: 0.72, direction: 1 },
-      { count: 24, x: 0.76, y: 0.29, scale: 0.58, direction: -1 },
-      { count: 26, x: 0.38, y: 0.53, scale: 0.86, direction: 1 },
-      { count: 20, x: 0.82, y: 0.68, scale: 1.04, direction: -1 },
-      { count: 22, x: 0.2, y: 0.78, scale: 0.64, direction: 1 },
-      { count: 18, x: 0.58, y: 0.16, scale: 0.48, direction: -1 }
+      { count: 30, x: 0.16, y: 0.22, scale: 0.72, direction: 1 },
+      { count: 26, x: 0.77, y: 0.25, scale: 0.55, direction: -1 },
+      { count: 28, x: 0.38, y: 0.48, scale: 0.88, direction: 1 },
+      { count: 24, x: 0.82, y: 0.62, scale: 1.08, direction: -1 },
+      { count: 26, x: 0.18, y: 0.76, scale: 0.66, direction: 1 },
+      { count: 22, x: 0.58, y: 0.14, scale: 0.46, direction: -1 },
+      { count: 24, x: 0.48, y: 0.84, scale: 0.78, direction: 1 },
+      { count: 20, x: 0.9, y: 0.43, scale: 0.62, direction: -1 }
     ];
     return layouts.map((layout, schoolIndex) => ({
       ...layout,
       phase: this.random() * TAU,
       fish: Array.from({ length: layout.count }, (_, index) => {
         const angle = this.random() * TAU;
-        const speed = 0.025 + this.random() * 0.028;
+        const speed = (0.025 + this.random() * 0.028) * 1.5;
         return {
           school: schoolIndex,
           index,
           x: layout.x + (this.random() - 0.5) * 0.22,
           y: layout.y + (this.random() - 0.5) * 0.12,
-          vx: Math.cos(angle) * speed + layout.direction * 0.018,
+          vx: Math.cos(angle) * speed + layout.direction * 0.027,
           vy: Math.sin(angle) * speed * 0.55,
-          size: this.random() > 0.88 ? 1.5 + this.random() * 0.75 : 0.48 + this.random() * 1.02,
+          size: this.random() > 0.82 ? 1.45 + this.random() * 1.05 : 0.34 + this.random() * 1.2,
           phase: this.random() * TAU,
           tone: this.random(),
           touch: 0
@@ -75,8 +77,8 @@ export class AmbientOcean {
     return Array.from({ length: count }, () => ({
       x: this.random(),
       y: this.random(),
-      size: 1.3 + this.random() * 3.8,
-      speed: 0.018 + this.random() * 0.035,
+      size: 3.2 + this.random() * 11.8,
+      speed: 0.022 + this.random() * 0.048,
       phase: this.random() * TAU
     }));
   }
@@ -96,7 +98,7 @@ export class AmbientOcean {
 
   draw(ctx, width, height, time, delta) {
     if (!width || !height) return;
-    this.motionBoost = Math.max(0, this.motionBoost - delta * 0.72);
+    this.motionBoost = Math.max(0, this.motionBoost - delta * 1.35);
     this.frameDelta = delta;
     this.updateInteractionState(delta);
     this.swimTime += delta * (1 + this.motionBoost * 1.65);
@@ -144,10 +146,10 @@ export class AmbientOcean {
       const angle = Math.atan2(fish.y - origin.y, fish.x - origin.x);
       const distance = Math.hypot(fish.x - origin.x, fish.y - origin.y);
       if (distance > 0.48) continue;
-      const kick = (0.16 + this.random() * 0.13) * (1 - distance / 0.6);
+      const kick = (0.1 + this.random() * 0.08) * (1 - distance / 0.6);
       fish.vx += Math.cos(angle) * kick;
       fish.vy += Math.sin(angle) * kick;
-      fish.touch = 1;
+      fish.touch = 0.62;
     }
     this.reactToMotion(origin.x, origin.y, 0.9);
   }
@@ -174,9 +176,9 @@ export class AmbientOcean {
       dx,
       dy,
       rotation: dx > 0 ? 0 : Math.PI,
-      speed: 1.56 / 5,
+      speed: 1.56 / 3,
       age: 0,
-      life: 5.35,
+      life: 3.35,
       phase: this.random() * TAU
     });
     this.specialFlash = 1;
@@ -353,15 +355,33 @@ export class AmbientOcean {
     if (this.vortex) {
       const x = this.vortex.x * width;
       const y = this.vortex.y * height;
-      const base = Math.min(width, height) * (0.08 + this.vortex.strength * 0.13);
-      for (let index = 0; index < 5; index += 1) {
-        const radiusX = base * (0.45 + index * 0.22);
-        const radiusY = radiusX * 0.42;
-        ctx.strokeStyle = `rgba(${130 + index * 18}, ${220 + index * 5}, 255, ${0.5 - index * 0.065})`;
-        ctx.lineWidth = Math.max(1, base * 0.025);
+      const base = Math.min(width, height) * (0.1 + this.vortex.strength * 0.15);
+      const palette = [
+        [119, 207, 241],
+        [153, 218, 244],
+        [178, 202, 239],
+        [198, 188, 232]
+      ];
+      for (let index = 0; index < 8; index += 1) {
+        const radius = base * (0.24 + index * 0.115 + Math.sin(time * 1.2 + index) * 0.018);
+        const offsetX = Math.sin(time * 0.7 + index * 1.8) * base * 0.07;
+        const offsetY = Math.cos(time * 0.62 + index * 1.3) * base * 0.055;
+        const color = palette[index % palette.length];
+        ctx.strokeStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${(0.42 - index * 0.032) * this.vortex.strength})`;
+        ctx.lineWidth = Math.max(2, base * (0.023 - index * 0.0014));
         ctx.beginPath();
-        ctx.ellipse(x, y, radiusX, radiusY, time * 0.8 + index * 0.36, 0.2, TAU - 0.35);
+        ctx.arc(x + offsetX, y + offsetY, radius, 0, TAU);
         ctx.stroke();
+      }
+      for (let index = 0; index < 11; index += 1) {
+        const angle = index / 11 * TAU + time * (index % 2 ? 0.16 : -0.12);
+        const orbit = base * (0.48 + index % 4 * 0.17);
+        const radius = base * (0.055 + index % 3 * 0.026);
+        const color = palette[(index + 1) % palette.length];
+        ctx.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${(0.12 + index % 2 * 0.035) * this.vortex.strength})`;
+        ctx.beginPath();
+        ctx.arc(x + Math.cos(angle) * orbit, y + Math.sin(angle) * orbit, radius, 0, TAU);
+        ctx.fill();
       }
     }
     ctx.restore();
@@ -460,9 +480,9 @@ export class AmbientOcean {
         let vx = fish.vx + ax * dt;
         let vy = fish.vy + ay * dt;
         const speed = Math.hypot(vx, vy);
-        const minSpeed = 0.018 + school.scale * 0.009;
+        const minSpeed = (0.018 + school.scale * 0.009) * 1.5;
         const gathering = attractingHands.length ? 0.23 : 0;
-        const maxSpeed = 0.11 + gathering + this.motionBoost * 0.1 + fish.touch * 0.055;
+        const maxSpeed = 0.165 + gathering + this.motionBoost * 0.1 + fish.touch * 0.055;
         if (speed > maxSpeed) {
           vx = vx / speed * maxSpeed;
           vy = vy / speed * maxSpeed;
@@ -480,7 +500,7 @@ export class AmbientOcean {
         fish.vy = vy;
         fish.x += vx * dt;
         fish.y += vy * dt;
-        fish.touch = Math.max(0, fish.touch - dt * 1.8);
+        fish.touch = Math.max(0, fish.touch - dt * 3.2);
         const heading = Math.atan2(vy, vx);
         const speedStretch = 1 + Math.min(0.2, Math.hypot(vx, vy) * 0.9);
         this.drawFish(
@@ -729,50 +749,30 @@ export class AmbientOcean {
       const sway = Math.sin(time * 1.8 + eel.phase) * length * 0.2;
       const x = eel.x * width;
       const y = eel.baseY * height;
-      const bodyWidth = Math.max(9, Math.min(width, height) * 0.015);
+      const bodyWidth = Math.max(11, Math.min(width, height) * 0.018);
       ctx.save();
       ctx.globalAlpha = fade * 0.92;
       ctx.lineCap = 'round';
-      ctx.strokeStyle = '#1679a6';
+      const bodyGradient = ctx.createLinearGradient(x, y - length, x, y);
+      bodyGradient.addColorStop(0, '#ff8a6f');
+      bodyGradient.addColorStop(0.42, '#ffc3ae');
+      bodyGradient.addColorStop(0.62, '#edf9f8');
+      bodyGradient.addColorStop(1, '#35b8cf');
+      ctx.strokeStyle = bodyGradient;
       ctx.lineWidth = bodyWidth;
-      ctx.shadowColor = 'rgba(75, 222, 239, .56)';
-      ctx.shadowBlur = Math.min(width, height) * 0.016;
+      ctx.shadowColor = 'rgba(111, 229, 239, .38)';
+      ctx.shadowBlur = Math.min(width, height) * 0.012;
       ctx.beginPath();
       ctx.moveTo(x, y);
-      ctx.bezierCurveTo(x - sway * 0.45, y - length * 0.34, x + sway * 0.62, y - length * 0.72, x + sway, y - length);
+      ctx.bezierCurveTo(x - sway * 0.42, y - length * 0.32, x + sway * 0.7, y - length * 0.74, x + sway, y - length);
       ctx.stroke();
 
-      ctx.fillStyle = '#1679a6';
+      ctx.fillStyle = '#ff9074';
       ctx.beginPath();
-      ctx.ellipse(x + sway, y - length, bodyWidth * 0.62, bodyWidth * 0.78, Math.sin(time + eel.phase) * 0.12, 0, TAU);
+      ctx.ellipse(x + sway, y - length, bodyWidth * 0.58, bodyWidth * 0.76, Math.sin(time + eel.phase) * 0.1, 0, TAU);
       ctx.fill();
 
       ctx.shadowBlur = 0;
-      ctx.strokeStyle = 'rgba(191, 239, 246, .88)';
-      ctx.lineWidth = Math.max(1.5, bodyWidth * 0.12);
-      for (const fraction of [0.4, 0.53, 0.66]) {
-        const stripeX = x + sway * fraction;
-        const stripeY = y - length * fraction;
-        ctx.beginPath();
-        ctx.moveTo(stripeX - bodyWidth * 0.38, stripeY);
-        ctx.lineTo(stripeX + bodyWidth * 0.38, stripeY);
-        ctx.stroke();
-      }
-
-      ctx.fillStyle = '#062f52';
-      ctx.shadowBlur = 0;
-      const headX = x + sway;
-      const eyeY = y - length - bodyWidth * 0.12;
-      ctx.beginPath();
-      ctx.arc(headX - bodyWidth * 0.2, eyeY, Math.max(1.2, bodyWidth * 0.075), 0, TAU);
-      ctx.arc(headX + bodyWidth * 0.2, eyeY, Math.max(1.2, bodyWidth * 0.075), 0, TAU);
-      ctx.fill();
-      ctx.strokeStyle = '#062f52';
-      ctx.lineWidth = Math.max(1, bodyWidth * 0.07);
-      ctx.beginPath();
-      ctx.arc(headX, eyeY + bodyWidth * 0.19, bodyWidth * 0.16, 0.12, Math.PI - 0.12);
-      ctx.stroke();
-
       ctx.strokeStyle = 'rgba(130, 234, 244, .34)';
       ctx.lineWidth = 1.4;
       ctx.beginPath();
@@ -797,31 +797,38 @@ export class AmbientOcean {
       ctx.save();
       ctx.translate(crab.x * width, (crab.y - bounce) * height);
       ctx.scale(crab.vx < 0 ? -unit : unit, unit);
-      ctx.globalAlpha = fade * 0.72;
-      ctx.fillStyle = '#062f52';
-      ctx.strokeStyle = '#062f52';
-      ctx.lineWidth = 0.12;
+      ctx.globalAlpha = fade * 0.88;
+      const crabGradient = ctx.createLinearGradient(-1.4, -0.7, 1.2, 0.7);
+      crabGradient.addColorStop(0, '#ff936f');
+      crabGradient.addColorStop(0.54, '#ff5e68');
+      crabGradient.addColorStop(1, '#dd2457');
+      ctx.fillStyle = crabGradient;
+      ctx.strokeStyle = crabGradient;
+      ctx.lineWidth = 0.15;
       ctx.lineCap = 'round';
-      ctx.shadowColor = 'rgba(78, 216, 240, .42)';
-      ctx.shadowBlur = 0.18;
+      ctx.shadowColor = 'rgba(255, 105, 111, .28)';
+      ctx.shadowBlur = 0.12;
       ctx.beginPath();
-      ctx.ellipse(0, 0, 0.78, 0.48, 0, 0, TAU);
+      ctx.ellipse(0, 0, 0.82, 0.53, 0, 0, TAU);
       ctx.fill();
       for (const side of [-1, 1]) {
-        for (let index = 0; index < 3; index += 1) {
+        for (let index = 0; index < 4; index += 1) {
           const step = Math.sin(time * 7 + crab.phase + index) * 0.16;
           ctx.beginPath();
-          ctx.moveTo(side * 0.55, -0.08 + index * 0.22);
-          ctx.lineTo(side * (1.02 + index * 0.08), 0.14 + index * 0.2 + step);
+          ctx.moveTo(side * 0.54, -0.08 + index * 0.18);
+          ctx.quadraticCurveTo(side * 0.88, 0.04 + index * 0.19, side * (1.12 + index * 0.045), 0.14 + index * 0.2 + step);
           ctx.stroke();
         }
         ctx.beginPath();
-        ctx.moveTo(side * 0.58, -0.25);
-        ctx.lineTo(side * 1.02, -0.72);
+        ctx.moveTo(side * 0.55, -0.28);
+        ctx.quadraticCurveTo(side * 0.86, -0.58, side * 1.06, -0.68);
         ctx.stroke();
         ctx.beginPath();
-        ctx.arc(side * 1.18, -0.75, 0.26, side < 0 ? -0.3 : Math.PI, side < 0 ? Math.PI * 1.28 : Math.PI * 0.28);
-        ctx.stroke();
+        ctx.moveTo(side * 0.96, -0.62);
+        ctx.quadraticCurveTo(side * 1.2, -1.02, side * 1.5, -0.86);
+        ctx.quadraticCurveTo(side * 1.34, -0.65, side * 1.55, -0.48);
+        ctx.quadraticCurveTo(side * 1.18, -0.38, side * 0.96, -0.62);
+        ctx.fill();
       }
       ctx.restore();
     }
@@ -874,39 +881,30 @@ export class AmbientOcean {
       ctx.globalAlpha = appear * fade * 0.78;
       ctx.shadowColor = '#56dcff';
       ctx.shadowBlur = 0.2;
-      const gradient = ctx.createLinearGradient(-1.5, -0.5, 1.25, 0.5);
-      gradient.addColorStop(0, '#031939');
-      gradient.addColorStop(0.5, '#07517b');
-      gradient.addColorStop(1, '#0aa0bd');
+      const gradient = ctx.createLinearGradient(1.6, -0.3, -2.0, 0.3);
+      gradient.addColorStop(0, '#19b9dc');
+      gradient.addColorStop(0.48, '#0878ad');
+      gradient.addColorStop(1, '#20339b');
       ctx.fillStyle = gradient;
       ctx.beginPath();
-      ctx.moveTo(-1.45, 0);
-      ctx.lineTo(-2.05, -0.72);
-      ctx.lineTo(-1.9, 0);
-      ctx.lineTo(-2.05, 0.72);
+      ctx.moveTo(-1.35, 0);
+      ctx.lineTo(-2.1, -0.72);
+      ctx.lineTo(-1.82, 0);
+      ctx.lineTo(-2.1, 0.72);
       ctx.closePath();
       ctx.fill();
       ctx.beginPath();
-      ctx.moveTo(-1.5, 0);
-      ctx.bezierCurveTo(-0.7, -0.62, 0.75, -0.62, 1.55, -0.08);
-      ctx.quadraticCurveTo(1.72, 0, 1.52, 0.12);
-      ctx.bezierCurveTo(0.66, 0.63, -0.7, 0.55, -1.5, 0);
+      ctx.moveTo(-1.48, -0.12);
+      ctx.bezierCurveTo(-0.72, -0.55, 0.7, -0.62, 1.46, -0.26);
+      ctx.quadraticCurveTo(1.78, -0.02, 1.46, 0.24);
+      ctx.bezierCurveTo(0.62, 0.62, -0.62, 0.58, -1.48, 0.12);
+      ctx.quadraticCurveTo(-1.62, 0, -1.48, -0.12);
       ctx.fill();
       ctx.beginPath();
-      ctx.moveTo(-0.25, -0.43);
-      ctx.lineTo(0.18, -1.12);
-      ctx.lineTo(0.48, -0.42);
+      ctx.moveTo(-0.18, 0.37);
+      ctx.quadraticCurveTo(0.12, 0.93, 0.62, 0.86);
+      ctx.lineTo(0.36, 0.34);
       ctx.closePath();
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(-0.25, 0.36);
-      ctx.lineTo(0.28, 0.8);
-      ctx.lineTo(0.48, 0.31);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = '#d8fbff';
-      ctx.beginPath();
-      ctx.arc(1.02, -0.18, 0.07, 0, TAU);
       ctx.fill();
       ctx.restore();
 

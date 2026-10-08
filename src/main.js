@@ -1,7 +1,7 @@
-import { AmbientOcean } from './ambient-ocean.js?v=20261005-pc3';
-import { CameraMotionDetector } from './motion-detector.js?v=20261005-pc3';
-import { GestureController } from './gesture-controller.js?v=20261005-pc3';
-import { WaterRenderer } from './water-renderer.js?v=20261005-pc3';
+import { AmbientOcean } from './ambient-ocean.js?v=20261008-pc4';
+import { CameraMotionDetector } from './motion-detector.js?v=20261008-pc4';
+import { GestureController } from './gesture-controller.js?v=20261008-pc4';
+import { WaterRenderer } from './water-renderer.js?v=20261008-pc4';
 
 const app = document.querySelector('#app');
 const video = document.querySelector('#camera');
@@ -46,7 +46,7 @@ const gestures = new GestureController(video, gestureElements, {
   onSpecial({ x, y, direction }) {
     ocean.launchShark(x, y, direction);
     water.addRipple(x, y, 1.6);
-    showTemporaryStatus('必殺！サメ・ストリーム！');
+    showTemporaryStatus('光のクジラが横切る！');
   },
   onCreatureGesture({ type, x, y }) {
     if (type === 'garden-eel') {
@@ -151,7 +151,7 @@ function startPreview() {
         ocean.launchShark(0.5, 0.58, { x: 0.86, y: -0.5 });
         water.addRipple(0.5, 0.58, 1.6);
         sharkLaunched = true;
-        gestureElements.label.textContent = '必殺！サメ・ストリーム！';
+        gestureElements.label.textContent = '光のクジラが横切る！';
       }
     } else if (phase === 'garden-eel') {
       applyInteractionState({ hands: [{ x: 0.32, y: 0.58, size: 0.2 }], speed: 0 });
