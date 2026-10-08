@@ -1,7 +1,7 @@
-import { AmbientOcean } from './ambient-ocean.js?v=20261008-pc4';
-import { CameraMotionDetector } from './motion-detector.js?v=20261008-pc4';
-import { GestureController } from './gesture-controller.js?v=20261008-pc4';
-import { WaterRenderer } from './water-renderer.js?v=20261008-pc4';
+import { AmbientOcean } from './ambient-ocean.js?v=20261008-pc5';
+import { CameraMotionDetector } from './motion-detector.js?v=20261008-pc5';
+import { GestureController } from './gesture-controller.js?v=20261008-pc5';
+import { WaterRenderer } from './water-renderer.js?v=20261008-pc5';
 
 const app = document.querySelector('#app');
 const video = document.querySelector('#camera');
@@ -48,13 +48,13 @@ const gestures = new GestureController(video, gestureElements, {
     water.addRipple(x, y, 1.6);
     showTemporaryStatus('光のクジラが横切る！');
   },
-  onCreatureGesture({ type, x, y }) {
+  onCreatureGesture({ type, x, y, stage = 1 }) {
     if (type === 'garden-eel') {
-      ocean.summonGardenEels(x, y);
-      showTemporaryStatus('ちんあなごが生えてきた！');
+      ocean.summonGardenEels(x, y, stage);
+      showTemporaryStatus(`ちんあなごが増えた！ ${stage}/3`);
     } else {
-      ocean.summonWalkingCrabs(x, y);
-      showTemporaryStatus('カニたちがお散歩を始めた！');
+      ocean.summonWalkingCrabs(x, y, stage === 3 ? 10 : 4);
+      showTemporaryStatus(stage === 3 ? 'カニがどっと増えた！' : `カニが現れた！ ${stage}/3`);
     }
   },
   onUnavailable() {

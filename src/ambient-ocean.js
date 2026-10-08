@@ -126,14 +126,14 @@ export class AmbientOcean {
       size: hand.size || 0.18,
       suppressAttraction: Boolean(hand.suppressAttraction || hand.gesture === 'Pointing_Up')
     }));
-    this.handVelocity.x += (velocity.x - this.handVelocity.x) * 0.46;
-    this.handVelocity.y += (velocity.y - this.handVelocity.y) * 0.46;
+    this.handVelocity.x += (velocity.x - this.handVelocity.x) * 0.72;
+    this.handVelocity.y += (velocity.y - this.handVelocity.y) * 0.72;
     this.handCharge += (charge - this.handCharge) * 0.38;
-    if (speed > 0.48) {
+    if (speed > 0.2) {
       this.current.x = this.handVelocity.x;
       this.current.y = this.handVelocity.y;
-      this.current.strength = Math.min(1, speed * 0.7);
-      this.motionBoost = Math.max(this.motionBoost, Math.min(1, speed * 0.45));
+      this.current.strength = Math.min(1.3, speed * 1.05);
+      this.motionBoost = Math.max(this.motionBoost, Math.min(1, speed * 0.65));
     }
   }
 
@@ -243,22 +243,22 @@ export class AmbientOcean {
     this.reactToMotion(x, y, special ? 1 : 0.78);
   }
 
-  summonGardenEels(x, y) {
-    for (let index = 0; index < 3; index += 1) {
+  summonGardenEels(x, y, amount = 3) {
+    for (let index = 0; index < amount; index += 1) {
       this.gardenEels.push({
-        x: Math.max(0.07, Math.min(0.93, x + (index - 1) * 0.085)),
-        baseY: Math.max(0.78, Math.min(0.94, y + 0.25 + Math.abs(index - 1) * 0.025)),
+        x: Math.max(0.07, Math.min(0.93, x + (index - (amount - 1) / 2) * 0.072)),
+        baseY: Math.max(0.78, Math.min(0.94, y + 0.25 + Math.abs(index - (amount - 1) / 2) * 0.018)),
         height: 0.085 + this.random() * 0.055,
         phase: this.random() * TAU,
         age: 0,
-        life: 9 + this.random() * 2
+        life: 18 + this.random() * 3
       });
     }
     this.reactToMotion(x, Math.min(0.92, y + 0.25), 0.72);
   }
 
-  summonWalkingCrabs(x, y) {
-    for (let index = 0; index < 6; index += 1) {
+  summonWalkingCrabs(x, y, amount = 6) {
+    for (let index = 0; index < amount; index += 1) {
       const direction = index % 2 === 0 ? 1 : -1;
       this.walkingCrabs.push({
         x: Math.max(0.05, Math.min(0.95, x + (this.random() - 0.5) * 0.22)),
@@ -443,22 +443,29 @@ export class AmbientOcean {
           const dx = hand.x - fish.x;
           const dy = hand.y - fish.y;
           const distance = Math.max(0.004, Math.hypot(dx * aspect, dy));
-          if (distance > 0.88) continue;
+          if (distance > 1.45) continue;
           if (distance < 0.075) {
             const touchForce = (0.075 - distance) * 4.8;
             ax -= dx / distance * touchForce;
             ay -= dy / distance * touchForce;
             fish.touch = 1;
           } else {
-            const pull = (1 - distance / 0.88) * 0.48;
+            const influence = 1 - distance / 1.45;
+            const rawDistance = Math.max(0.004, Math.hypot(dx, dy));
+            const pull = influence * 1.28;
             ax += dx / distance * pull;
             ay += dy / distance * pull;
+            const desiredSpeed = 0.42 + influence * 0.42;
+            ax += (dx / rawDistance * desiredSpeed - fish.vx) * 3.8;
+            ay += (dy / rawDistance * desiredSpeed - fish.vy) * 3.8;
+            ax += this.handVelocity.x * influence * 0.2;
+            ay += this.handVelocity.y * influence * 0.2;
           }
         }
 
         if (this.current.strength > 0) {
-          ax += this.current.x * this.current.strength * 0.13;
-          ay += this.current.y * this.current.strength * 0.13;
+          ax += this.current.x * this.current.strength * 0.34;
+          ay += this.current.y * this.current.strength * 0.34;
         }
         if (this.vortex) {
           const dx = fish.x - this.vortex.x;
@@ -481,7 +488,7 @@ export class AmbientOcean {
         let vy = fish.vy + ay * dt;
         const speed = Math.hypot(vx, vy);
         const minSpeed = (0.018 + school.scale * 0.009) * 1.5;
-        const gathering = attractingHands.length ? 0.23 : 0;
+        const gathering = attractingHands.length ? 0.68 : 0;
         const maxSpeed = 0.165 + gathering + this.motionBoost * 0.1 + fish.touch * 0.055;
         if (speed > maxSpeed) {
           vx = vx / speed * maxSpeed;
@@ -746,7 +753,7 @@ export class AmbientOcean {
       const appear = Math.min(1, eel.age / 0.58);
       const fade = Math.min(1, eel.life / 0.8);
       const length = height * eel.height * appear;
-      const sway = Math.sin(time * 1.8 + eel.phase) * length * 0.2;
+      const sway = Math.sin(time * 1.35 + eel.phase) * Math.min(width, height) * 0.006;
       const x = eel.x * width;
       const y = eel.baseY * height;
       const bodyWidth = Math.max(11, Math.min(width, height) * 0.018);
@@ -764,13 +771,8 @@ export class AmbientOcean {
       ctx.shadowBlur = Math.min(width, height) * 0.012;
       ctx.beginPath();
       ctx.moveTo(x, y);
-      ctx.bezierCurveTo(x - sway * 0.42, y - length * 0.32, x + sway * 0.7, y - length * 0.74, x + sway, y - length);
+      ctx.lineTo(x + sway, y - length);
       ctx.stroke();
-
-      ctx.fillStyle = '#ff9074';
-      ctx.beginPath();
-      ctx.ellipse(x + sway, y - length, bodyWidth * 0.58, bodyWidth * 0.76, Math.sin(time + eel.phase) * 0.1, 0, TAU);
-      ctx.fill();
 
       ctx.shadowBlur = 0;
       ctx.strokeStyle = 'rgba(130, 234, 244, .34)';
@@ -792,10 +794,9 @@ export class AmbientOcean {
       if (crab.x > 1.08) crab.x = -0.08;
       const appear = Math.min(1, crab.age / 0.36);
       const fade = Math.min(1, crab.life / 0.8);
-      const bounce = Math.abs(Math.sin(time * 5.4 + crab.phase)) * 0.008;
       const unit = Math.min(width, height) * 0.025 * crab.size * appear;
       ctx.save();
-      ctx.translate(crab.x * width, (crab.y - bounce) * height);
+      ctx.translate(crab.x * width, crab.y * height);
       ctx.scale(crab.vx < 0 ? -unit : unit, unit);
       ctx.globalAlpha = fade * 0.88;
       const crabGradient = ctx.createLinearGradient(-1.4, -0.7, 1.2, 0.7);
@@ -813,10 +814,9 @@ export class AmbientOcean {
       ctx.fill();
       for (const side of [-1, 1]) {
         for (let index = 0; index < 4; index += 1) {
-          const step = Math.sin(time * 7 + crab.phase + index) * 0.16;
           ctx.beginPath();
           ctx.moveTo(side * 0.54, -0.08 + index * 0.18);
-          ctx.quadraticCurveTo(side * 0.88, 0.04 + index * 0.19, side * (1.12 + index * 0.045), 0.14 + index * 0.2 + step);
+          ctx.quadraticCurveTo(side * 0.88, 0.04 + index * 0.19, side * (1.12 + index * 0.045), 0.14 + index * 0.2);
           ctx.stroke();
         }
         ctx.beginPath();

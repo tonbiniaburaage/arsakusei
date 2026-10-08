@@ -28,8 +28,8 @@ export class GestureController {
     this.specialCooldownUntil = 0;
     this.vortexCooldownUntil = 0;
     this.gestureStates = new Map([
-      ['Pointing_Up', { hold: 0, cooldownUntil: 0 }],
-      ['Victory', { hold: 0, cooldownUntil: 0 }]
+      ['Pointing_Up', { hold: 0, cooldownUntil: 0, needsRelease: false, count: 0 }],
+      ['Victory', { hold: 0, cooldownUntil: 0, needsRelease: false, count: 0 }]
     ]);
     this.lastUiProgress = '';
   }
@@ -116,7 +116,7 @@ export class GestureController {
 
     if (!hands.length) {
       this.missedFrames += 1;
-      this.resetGestureHolds();
+      this.resetGestureHolds(this.missedFrames >= 5);
       this.twoHandCharge = Math.max(0, this.twoHandCharge - delta * 2.6);
       if (this.twoHandCharge === 0) this.chargeOrigin = null;
       if (this.hadHands && this.missedFrames >= 5) {
@@ -282,16 +282,21 @@ export class GestureController {
       const hand = hands.find((candidate) => candidate.gesture === gesture && candidate.gestureScore >= threshold);
       if (!hand) {
         state.hold = Math.max(0, state.hold - delta * 2.8);
+        state.needsRelease = false;
         continue;
       }
+      if (state.needsRelease) continue;
       state.hold += delta;
       if (state.hold < 0.34 || now < state.cooldownUntil) continue;
       state.hold = 0;
-      state.cooldownUntil = now + 4800;
+      state.cooldownUntil = now + 650;
+      state.needsRelease = true;
+      state.count = state.count % 3 + 1;
       triggers.push({
         type: gesture === 'Pointing_Up' ? 'garden-eel' : 'crab-walk',
         x: hand.x,
-        y: hand.y
+        y: hand.y,
+        stage: state.count
       });
     }
     return triggers;
@@ -302,13 +307,21 @@ export class GestureController {
     if (!announce || !triggers.length) return;
     const hasEels = triggers.some((trigger) => trigger.type === 'garden-eel');
     const hasCrabs = triggers.some((trigger) => trigger.type === 'crab-walk');
-    if (hasEels && hasCrabs) this.announce('ちんあなごとカニが現れた！');
-    else if (hasEels) this.announce('ちんあなごが生えてきた！');
-    else this.announce('カニたちがお散歩を始めた！');
+    if (hasEels && hasCrabs) this.announce('ちんあなごとカニが増えた！');
+    else if (hasEels) {
+      const stage = triggers.find((trigger) => trigger.type === 'garden-eel')?.stage || 1;
+      this.announce(`ちんあなごが増えた！ ${stage}/3`);
+    } else {
+      const stage = triggers.find((trigger) => trigger.type === 'crab-walk')?.stage || 1;
+      this.announce(stage === 3 ? 'カニがどっと増えた！' : `カニが現れた！ ${stage}/3`);
+    }
   }
 
-  resetGestureHolds() {
-    for (const state of this.gestureStates.values()) state.hold = 0;
+  resetGestureHolds(release = true) {
+    for (const state of this.gestureStates.values()) {
+      state.hold = 0;
+      if (release) state.needsRelease = false;
+    }
   }
 
   updateCirclePath(point, now) {
