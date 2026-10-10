@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MindARThree } from 'mindar-image-three';
-import { CreatureController } from './creature-controller.js?v=20261010-apriltag1';
-import { AprilTagMarkerDetector } from './apriltag-marker-detector.js?v=20261010-apriltag1';
+import { CreatureController } from './creature-controller.js?v=20261010-apriltag2';
+import { AprilTagMarkerDetector } from './apriltag-marker-detector.js?v=20261010-apriltag2';
 
 const TARGETS = [
   { key: 'jellyfish', targetIndex: 0, offset: [0, 0, 0.2], sizeCorrection: 1 },
@@ -42,11 +42,10 @@ export class TrackingEngine {
     this.smoothingScale = new THREE.Vector3();
     this.mindar = new MindARThree({
       container,
-      imageTargetSrc: './assets/targets/creature-targets.mind?v=20261010-ipad-models3',
+      imageTargetSrc: './assets/targets/creature-targets.mind?v=20261010-apriltag2',
       maxTrack: 1,
-      // 旧カードも引き続き利用できるように残す。新しい小型マーカーは
-      // WebAssemblyのAprilTag検出器で連続2回読み取って起動する。
-      warmupTolerance: 2,
+      // 旧カードも1フレームで認識を確定する。
+      warmupTolerance: 1,
       missTolerance: 68,
       filterMinCF: 0.0012,
       filterBeta: 2.2,
@@ -54,8 +53,8 @@ export class TrackingEngine {
       uiScanning: 'no',
       uiError: 'no'
     });
-    // 展示ではiPadの画面側に模型を置くため、内カメラを明示的に使う。
-    this.mindar.shouldFaceUser = true;
+    // 高解像度でマーカーを読めるiPadの外カメラ（背面）を明示的に使う。
+    this.mindar.shouldFaceUser = false;
 
     this.renderer = this.mindar.renderer;
     this.scene = this.mindar.scene;

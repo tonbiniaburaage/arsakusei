@@ -15,7 +15,7 @@
   <p id="result">準備中…</p>
   <canvas id="frame" width="384" height="288"></canvas>
   <script type="module">
-    import { AprilTagMarkerDetector } from '../src/apriltag-marker-detector.js';
+    import { AprilTagMarkerDetector } from '../src/apriltag-marker-detector.js?v=20261010-apriltag2';
 
     const canvas = document.querySelector('#frame');
     const context = canvas.getContext('2d');
@@ -52,10 +52,14 @@
         const match = await detector.detectCanvas(canvas);
         actual.push({ expected: item.key, actual: match?.key || null, tagId: match?.tagId ?? null });
       }
-      const passed = actual.every((item) => item.expected === item.actual);
-      window.__markerTestResult = { passed, cases: actual };
+      const instantMatch = detector.stabilize({
+        key: 'whale', tagId: 1, confidence: 1, coverage: 0.02, x: 0.5, y: 0.5
+      });
+      const instantPassed = instantMatch?.key === 'whale';
+      const passed = actual.every((item) => item.expected === item.actual) && instantPassed;
+      window.__markerTestResult = { passed, instantPassed, cases: actual };
       result.className = passed ? 'pass' : 'fail';
-      result.textContent = passed ? 'PASS: 3種類すべて認識しました' : `FAIL: ${JSON.stringify(actual)}`;
+      result.textContent = passed ? 'PASS: 3種類を1フレームで認識しました' : `FAIL: ${JSON.stringify(actual)}`;
     } catch (error) {
       window.__markerTestResult = { passed: false, error: error.message };
       result.className = 'fail';

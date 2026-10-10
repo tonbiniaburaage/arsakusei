@@ -1,7 +1,6 @@
-const SCAN_LONG_EDGE = 384;
-const SCAN_SHORT_EDGE_LIMIT = 288;
-const SCAN_INTERVAL_SECONDS = 0.12;
-const STABILITY_WINDOW_MS = 720;
+const SCAN_LONG_EDGE = 640;
+const SCAN_SHORT_EDGE_LIMIT = 480;
+const SCAN_INTERVAL_SECONDS = 0.1;
 const TAG_TO_CREATURE = new Map([
   [0, 'jellyfish'],
   [1, 'whale'],
@@ -21,7 +20,6 @@ export class AprilTagMarkerDetector {
     this.lastCheck = -Infinity;
     this.nextRequestId = 1;
     this.pending = new Map();
-    this.history = [];
     this.latestMatch = null;
   }
 
@@ -125,17 +123,10 @@ export class AprilTagMarkerDetector {
   }
 
   stabilize(match) {
-    const now = performance.now();
-    this.history = this.history.filter((entry) => now - entry.time <= STABILITY_WINDOW_MS);
     if (!match) return null;
-    this.history.push({ ...match, time: now });
-    const matching = this.history.filter((entry) => entry.tagId === match.tagId);
-    if (matching.length < 2) return null;
+    // 識別済みAprilTagはエラー訂正付きの固有IDなので、1フレームで即時起動する。
     return {
       ...match,
-      x: average(matching, 'x'),
-      y: average(matching, 'y'),
-      coverage: average(matching, 'coverage'),
       confidence: 1
     };
   }
@@ -153,7 +144,6 @@ export class AprilTagMarkerDetector {
   }
 
   reset() {
-    this.history.length = 0;
     this.latestMatch = null;
   }
 
@@ -223,10 +213,6 @@ function polygonArea(points) {
     area += current.x * next.y - next.x * current.y;
   }
   return Math.abs(area) * 0.5;
-}
-
-function average(entries, key) {
-  return entries.reduce((sum, entry) => sum + entry[key], 0) / entries.length;
 }
 
 function clamp(value, min, max) {
