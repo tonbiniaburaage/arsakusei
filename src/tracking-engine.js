@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MindARThree } from 'mindar-image-three';
-import { CreatureController } from './creature-controller.js?v=20261010-ipad-models2';
-import { ResinModelDetector } from './resin-model-detector.js?v=20261010-ipad-models2';
+import { CreatureController } from './creature-controller.js?v=20261010-ipad-models3';
+import { ResinModelDetector } from './resin-model-detector.js?v=20261010-ipad-models3';
 
 const TARGETS = [
   { key: 'jellyfish', targetIndex: 0, offset: [0, 0, 0.2], sizeCorrection: 1 },
@@ -42,9 +42,10 @@ export class TrackingEngine {
     this.smoothingScale = new THREE.Vector3();
     this.mindar = new MindARThree({
       container,
-      imageTargetSrc: './assets/targets/creature-targets.mind?v=20261010-ipad-models2',
+      imageTargetSrc: './assets/targets/creature-targets.mind?v=20261010-ipad-models3',
       maxTrack: 1,
-      warmupTolerance: 3,
+      // 手持ちカードを2〜3秒見せる運用で、連続2フレームで起動する。
+      warmupTolerance: 2,
       missTolerance: 68,
       filterMinCF: 0.0012,
       filterBeta: 2.2,

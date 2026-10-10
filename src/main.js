@@ -1,8 +1,8 @@
-import { AREngine } from './ar-engine.js?v=20261010-ipad-models2';
-import { TrackingEngine } from './tracking-engine.js?v=20261010-ipad-models2';
-import { EffectController } from './effect-controller.js?v=20261010-ipad-models2';
-import { PhotoController } from './photo-controller.js?v=20261010-ipad-models2';
-import { CREATURE_ORDER, CREATURES, qualityProfile } from './creature-config.js?v=20261010-ipad-models2';
+import { AREngine } from './ar-engine.js?v=20261010-ipad-models3';
+import { TrackingEngine } from './tracking-engine.js?v=20261010-ipad-models3';
+import { EffectController } from './effect-controller.js?v=20261010-ipad-models3';
+import { PhotoController } from './photo-controller.js?v=20261010-ipad-models3';
+import { CREATURE_ORDER, CREATURES, qualityProfile } from './creature-config.js?v=20261010-ipad-models3';
 
 const stage = document.querySelector('#stage');
 const effectsCanvas = document.querySelector('#effects');

@@ -19,8 +19,8 @@
   </table>
   <p id="summary">Running…</p>
   <script type="module">
-    import { ResinModelDetector } from '../src/resin-model-detector.js?v=20261010-ipad-models2';
-    import { qualityProfile } from '../src/creature-config.js?v=20261010-ipad-models2';
+    import { ResinModelDetector } from '../src/resin-model-detector.js?v=20261010-ipad-models3';
+    import { qualityProfile } from '../src/creature-config.js?v=20261010-ipad-models3';
 
     const sources = {
       jellyfish: '../assets/targets/resin-jellyfish-reference.png',
@@ -35,8 +35,8 @@
     const detector = new ResinModelDetector();
     await detector.initialize();
     const canvas = document.createElement('canvas');
-    canvas.width = 160;
-    canvas.height = 120;
+    canvas.width = 192;
+    canvas.height = 144;
     const context = canvas.getContext('2d', { willReadFrequently: true });
     const rows = [];
 
@@ -50,11 +50,18 @@
     const profile = qualityProfile();
     window.__detectorDiagnostics = rows;
     const recognitionPassed = rows.every(({ expected, normal, dark }) => normal.key === expected && dark.key === expected);
+    detector.reset();
+    const motionSample = { key: 'whale', confidence: 0.75, x: 0.3, y: 0.55, coverage: 0.03 };
+    const motionResults = [1, 2, 3].map(() => detector.stabilize(motionSample));
+    const responsePassed = motionResults[0] === null
+      && motionResults[1] === null
+      && motionResults[2]?.key === 'whale'
+      && detector.intervalSeconds <= 0.11;
     const profilePassed = profile.mode === 'ipad-mini-6-kiosk'
       && profile.lightweight === false
       && profile.lowPower === false
       && profile.maxFPS === 30;
-    const passed = recognitionPassed && profilePassed;
+    const passed = recognitionPassed && responsePassed && profilePassed;
     document.querySelector('#results').innerHTML = rows.map(({ expected, normal, dark }) => `
       <tr>
         <th>${expected}</th>
@@ -63,7 +70,7 @@
       </tr>
     `).join('');
     document.querySelector('#summary').textContent = passed
-      ? 'PASS — 3 models, dark-scene compensation, and iPad kiosk profile'
+      ? 'PASS — 3 models, dark-scene compensation, handheld response, and iPad kiosk profile'
       : `FAIL — profile=${JSON.stringify(profile)}`;
     document.querySelector('#summary').className = passed ? 'pass' : 'fail';
     document.body.dataset.status = passed ? 'pass' : 'fail';

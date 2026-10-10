@@ -1,6 +1,8 @@
-const SCAN_WIDTH = 160;
-const SCAN_HEIGHT = 120;
+const SCAN_WIDTH = 192;
+const SCAN_HEIGHT = 144;
 const GRID_SIZE = 12;
+const MAX_CANDIDATES = 7;
+const MIN_COMPONENT_AREA = 54;
 const REFERENCE_SOURCES = {
   jellyfish: {
     src: new URL('../assets/targets/resin-jellyfish-reference.png', import.meta.url).href,
@@ -17,9 +19,13 @@ const REFERENCE_SOURCES = {
 };
 
 const FALLBACK_DESCRIPTORS = {
-  jellyfish: { aspect: 0.82, fill: 0.52, lowerRatio: 0.35 },
-  whale: { aspect: 1.62, fill: 0.48, lowerRatio: 0.48 },
-  turtle: { aspect: 1.28, fill: 0.55, lowerRatio: 0.52 }
+  jellyfish: [{ aspect: 0.82, fill: 0.52, lowerRatio: 0.35 }],
+  whale: [
+    { aspect: 1.62, fill: 0.48, lowerRatio: 0.48 },
+    // 手で尾を持った際に輪郭が分断されたクジラの部分シルエット。
+    { aspect: 1.2, fill: 0.44, lowerRatio: 0.54 }
+  ],
+  turtle: [{ aspect: 1.28, fill: 0.55, lowerRatio: 0.52 }]
 };
 
 export class ResinModelDetector {
@@ -38,7 +44,8 @@ export class ResinModelDetector {
     this.references = new Map();
     this.history = [];
     this.lastCheck = -Infinity;
-    this.intervalSeconds = 0.16;
+    // 手持ちで2〜3秒しか見せない運用を想定し、約9fpsで軽量スキャンする。
+    this.intervalSeconds = 0.11;
     this.ready = false;
   }
 
@@ -89,8 +96,12 @@ export class ResinModelDetector {
     try {
       this.context.drawImage(video, 0, 0, SCAN_WIDTH, SCAN_HEIGHT);
       const imageData = this.context.getImageData(0, 0, SCAN_WIDTH, SCAN_HEIGHT);
-      const descriptor = this.describe(imageData);
-      const result = descriptor ? this.classify(descriptor) : null;
+      const candidates = this.describeCandidates(imageData);
+      const matches = candidates
+        .map((descriptor) => this.classify(descriptor))
+        .filter(Boolean)
+        .sort((a, b) => b.selectionScore - a.selectionScore);
+      const result = matches[0] || null;
       return this.stabilize(result);
     } catch {
       return null;
@@ -98,6 +109,10 @@ export class ResinModelDetector {
   }
 
   describe(imageData) {
+    return this.describeCandidates(imageData, 1)[0] || null;
+  }
+
+  describeCandidates(imageData, limit = MAX_CANDIDATES) {
     const { data, width, height } = imageData;
     const histogram = new Uint32Array(64);
     for (let index = 0; index < data.length; index += 16) {
@@ -134,50 +149,18 @@ export class ResinModelDetector {
     }
 
     closeMask(this.mask, this.closedMask, width, height);
-    const component = this.largestComponent(this.closedMask, width, height);
-    if (!component) return null;
-
-    const bboxWidth = component.maxX - component.minX + 1;
-    const bboxHeight = component.maxY - component.minY + 1;
-    const coverage = component.area / (width * height);
-    if (component.area < 76 || bboxWidth < 11 || bboxHeight < 9 || coverage > 0.86) return null;
-
-    const grid = new Float32Array(GRID_SIZE * GRID_SIZE);
-    let lowerPixels = 0;
-    for (const pixel of component.pixels) {
-      const x = pixel % width;
-      const y = Math.floor(pixel / width);
-      const gridX = Math.min(GRID_SIZE - 1, Math.floor((x - component.minX) / bboxWidth * GRID_SIZE));
-      const gridY = Math.min(GRID_SIZE - 1, Math.floor((y - component.minY) / bboxHeight * GRID_SIZE));
-      grid[gridY * GRID_SIZE + gridX] += 1;
-      if (y >= component.minY + bboxHeight * 0.56) lowerPixels += 1;
-    }
-    const cellArea = Math.max(1, bboxWidth * bboxHeight / (GRID_SIZE * GRID_SIZE));
-    for (let index = 0; index < grid.length; index += 1) {
-      grid[index] = Math.min(1, grid[index] / cellArea);
-    }
-
-    return {
-      x: (component.minX + component.maxX) * 0.5 / width,
-      y: (component.minY + component.maxY) * 0.5 / height,
-      coverage,
-      aspect: bboxWidth / bboxHeight,
-      fill: component.area / (bboxWidth * bboxHeight),
-      lowerRatio: lowerPixels / component.area,
-      grid
-    };
+    return this.componentDescriptors(this.closedMask, width, height, limit);
   }
 
-  largestComponent(mask, width, height) {
+  componentDescriptors(mask, width, height, limit) {
     this.visited.fill(0);
-    let best = null;
+    const descriptors = [];
     for (let start = 0; start < mask.length; start += 1) {
       if (!mask[start] || this.visited[start]) continue;
       let head = 0;
       let tail = 0;
       this.queue[tail++] = start;
       this.visited[start] = 1;
-      const pixels = [];
       let minX = width;
       let minY = height;
       let maxX = 0;
@@ -185,7 +168,6 @@ export class ResinModelDetector {
 
       while (head < tail) {
         const pixel = this.queue[head++];
-        pixels.push(pixel);
         const x = pixel % width;
         const y = Math.floor(pixel / width);
         minX = Math.min(minX, x);
@@ -207,21 +189,64 @@ export class ResinModelDetector {
         }
       }
 
-      if (!best || pixels.length > best.area) {
-        best = { area: pixels.length, pixels, minX, minY, maxX, maxY };
+      const area = tail;
+      const bboxWidth = maxX - minX + 1;
+      const bboxHeight = maxY - minY + 1;
+      const coverage = area / (width * height);
+      // 過小な光点と、人・窓・カーテンなど画面の大半を占める領域を除外。
+      if (
+        area < MIN_COMPONENT_AREA
+        || bboxWidth < 8
+        || bboxHeight < 7
+        || coverage < 0.012
+        || coverage > 0.3
+      ) continue;
+
+      const grid = new Float32Array(GRID_SIZE * GRID_SIZE);
+      let lowerPixels = 0;
+      for (let index = 0; index < tail; index += 1) {
+        const pixel = this.queue[index];
+        const x = pixel % width;
+        const y = Math.floor(pixel / width);
+        const gridX = Math.min(GRID_SIZE - 1, Math.floor((x - minX) / bboxWidth * GRID_SIZE));
+        const gridY = Math.min(GRID_SIZE - 1, Math.floor((y - minY) / bboxHeight * GRID_SIZE));
+        grid[gridY * GRID_SIZE + gridX] += 1;
+        if (y >= minY + bboxHeight * 0.56) lowerPixels += 1;
       }
+      const cellArea = Math.max(1, bboxWidth * bboxHeight / (GRID_SIZE * GRID_SIZE));
+      for (let index = 0; index < grid.length; index += 1) {
+        grid[index] = Math.min(1, grid[index] / cellArea);
+      }
+
+      descriptors.push({
+        x: (minX + maxX) * 0.5 / width,
+        y: (minY + maxY) * 0.5 / height,
+        coverage,
+        area,
+        aspect: bboxWidth / bboxHeight,
+        fill: area / (bboxWidth * bboxHeight),
+        lowerRatio: lowerPixels / area,
+        grid
+      });
     }
-    return best;
+    descriptors.sort((a, b) => b.area - a.area);
+    return descriptors.slice(0, limit);
   }
 
   classify(descriptor) {
     const scores = this.rank(descriptor);
     const best = scores[0];
     const margin = best.score - scores[1].score;
-    if (best.score < 0.47 || margin < 0.025) return null;
+    if (best.score < 0.6 || margin < 0.055) return null;
+    const centerDistance = Math.hypot(descriptor.x - 0.5, descriptor.y - 0.52);
+    const confidence = clamp(best.score * 0.72 + margin * 1.55, 0, 1);
     return {
       key: best.key,
-      confidence: clamp(best.score * 0.78 + margin * 1.8, 0, 1),
+      confidence,
+      score: best.score,
+      margin,
+      // 中央付近の候補をわずかに優先し、窓や照明を拾いにくくする。
+      selectionScore: confidence + Math.max(0, 0.08 - centerDistance * 0.09),
       x: descriptor.x,
       y: descriptor.y,
       coverage: descriptor.coverage
@@ -231,7 +256,10 @@ export class ResinModelDetector {
   rank(descriptor) {
     const scores = [];
     for (const key of Object.keys(REFERENCE_SOURCES)) {
-      const references = this.references.get(key) || [FALLBACK_DESCRIPTORS[key]];
+      const references = [
+        ...(this.references.get(key) || []),
+        ...FALLBACK_DESCRIPTORS[key]
+      ];
       let score = Math.max(...references.map((reference) => {
         const gridScore = reference.grid ? Math.max(
           gridSimilarity(descriptor.grid, reference.grid, false),
@@ -245,6 +273,12 @@ export class ResinModelDetector {
 
       if (key === 'jellyfish' && descriptor.aspect < 1.02 && descriptor.lowerRatio > 0.27) score += 0.08;
       if (key === 'whale' && descriptor.aspect > 1.48) score += 0.07;
+      if (
+        key === 'whale'
+        && descriptor.aspect >= 1.12
+        && descriptor.fill < 0.5
+        && descriptor.lowerRatio > 0.48
+      ) score += 0.1;
       if (key === 'turtle' && descriptor.aspect >= 1.02 && descriptor.aspect <= 1.55) score += 0.035;
       scores.push({ key, score });
     }
@@ -254,13 +288,14 @@ export class ResinModelDetector {
 
   stabilize(result) {
     this.history.push(result);
-    if (this.history.length > 7) this.history.shift();
+    if (this.history.length > 6) this.history.shift();
     if (!result) return null;
 
     const matching = this.history.filter((entry) => entry?.key === result.key);
-    if (matching.length < 4) return null;
     const confidence = matching.reduce((sum, entry) => sum + entry.confidence, 0) / matching.length;
-    if (confidence < 0.48) return null;
+    // 強い候補は2回、通常候補は3回で確定。約220〜330msで起動できる。
+    const requiredHits = confidence >= 0.78 ? 2 : 3;
+    if (matching.length < requiredHits || confidence < 0.62) return null;
     return {
       key: result.key,
       confidence,
