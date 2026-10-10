@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AprilTag detector test</title>
+  <style>
+    body { margin: 24px; font-family: system-ui, sans-serif; background: #10101c; color: #fff; }
+    canvas { width: 384px; max-width: 100%; border: 1px solid #777; background: #bbb; }
+    .pass { color: #8fffc2; } .fail { color: #ff9ea8; }
+  </style>
+</head>
+<body>
+  <h1>AprilTag detector test</h1>
+  <p id="result">準備中…</p>
+  <canvas id="frame" width="384" height="288"></canvas>
+  <script type="module">
+    import { AprilTagMarkerDetector } from '../src/apriltag-marker-detector.js';
+
+    const canvas = document.querySelector('#frame');
+    const context = canvas.getContext('2d');
+    const result = document.querySelector('#result');
+    const detector = new AprilTagMarkerDetector();
+    const cases = [
+      { id: 0, key: 'jellyfish', angle: 0, size: 72 },
+      { id: 1, key: 'whale', angle: 0.16, size: 64 },
+      { id: 2, key: 'turtle', angle: -0.22, size: 80 }
+    ];
+
+    function loadImage(src) {
+      return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = reject;
+        image.src = src;
+      });
+    }
+
+    try {
+      await detector.initialize();
+      const actual = [];
+      for (const item of cases) {
+        const image = await loadImage(`../assets/targets/markers/tag36_11_${String(item.id).padStart(5, '0')}.png`);
+        context.fillStyle = '#b9bbc0';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.save();
+        context.translate(canvas.width / 2, canvas.height / 2);
+        context.rotate(item.angle);
+        context.imageSmoothingEnabled = false;
+        context.drawImage(image, -item.size / 2, -item.size / 2, item.size, item.size);
+        context.restore();
+        const match = await detector.detectCanvas(canvas);
+        actual.push({ expected: item.key, actual: match?.key || null, tagId: match?.tagId ?? null });
+      }
+      const passed = actual.every((item) => item.expected === item.actual);
+      window.__markerTestResult = { passed, cases: actual };
+      result.className = passed ? 'pass' : 'fail';
+      result.textContent = passed ? 'PASS: 3種類すべて認識しました' : `FAIL: ${JSON.stringify(actual)}`;
+    } catch (error) {
+      window.__markerTestResult = { passed: false, error: error.message };
+      result.className = 'fail';
+      result.textContent = `ERROR: ${error.message}`;
+    } finally {
+      detector.stop();
+    }
+  </script>
+</body>
+</html>

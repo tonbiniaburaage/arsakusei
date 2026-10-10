@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>海のなかま AR 認識カード</title>
+  <title>海のなかま AR 識別マーカー</title>
   <style>
     :root { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif; color: #21163a; background: #f5f1ff; }
     * { box-sizing: border-box; }
@@ -22,7 +22,7 @@
       break-after: page;
     }
     .card h2 { margin: 0 0 12px; font-size: 20px; }
-    .card img { display: block; width: 100%; border-radius: 12px; }
+    .card img { display: block; width: min(100%, 240px); margin: auto; image-rendering: pixelated; }
     .card a { display: inline-block; margin-top: 14px; padding: 11px 17px; border-radius: 999px; color: white; background: #6c52b8; font-weight: 700; text-decoration: none; }
     .steps { max-width: 720px; margin: 28px auto 0; text-align: left; }
     @media (min-width: 900px) {
@@ -30,47 +30,45 @@
       .card { padding: 12px; }
       .card h2 { font-size: 16px; }
     }
-    @media print {
-      body { padding: 0; background: white; }
-      header, .steps, .card h2, .card a { display: none; }
-      .cards { display: block; max-width: none; margin: 0; }
-      .card { display: grid; place-items: center; width: 100vw; height: 100vh; padding: 1cm; border-radius: 0; box-shadow: none; }
-      .card img { width: 25cm; max-width: 95vw; border-radius: 0; }
-    }
+    small { display: block; margin-top: 8px; color: #685d79; }
   </style>
 </head>
 <body>
   <header>
-    <h1>海のなかま AR 認識カード</h1>
-    <p class="notice">展示では、対応するレジン模型をカードの白い部分に置いてください。スマホには模型とカード全体が一緒に入るように映します。</p>
-    <a class="download-all" href="./assets/targets/AR-cards-white.zip" download>3枚まとめて保存</a>
+    <h1>海のなかま AR 識別マーカー</h1>
+    <p class="notice">レジン模型へ取り外しできるように付け、マーカーをiPadの内カメラへ2〜3秒見せてください。認識後は画面から外してもゲームが続きます。</p>
+    <a class="download-all" href="./assets/targets/markers/removable-creature-markers-a4-30mm.pdf" download>A4印刷用PDFを保存</a>
   </header>
 
   <main class="cards">
     <section class="card">
       <h2>01 クラゲ</h2>
-      <img src="./assets/targets/jellyfish-card-white.png" alt="白い模型スペース付きのクラゲ認識カード">
-      <a href="./assets/targets/jellyfish-card-white.png" download>クラゲカードを保存</a>
+      <img src="./assets/targets/markers/jellyfish-id0-30mm.svg" alt="クラゲ用AprilTag ID 0">
+      <small>AprilTag ID 0</small>
+      <a href="./assets/targets/markers/jellyfish-id0-30mm.svg" download>クラゲ用SVGを保存</a>
     </section>
     <section class="card">
       <h2>02 クジラ</h2>
-      <img src="./assets/targets/whale-card-white.png" alt="白い模型スペース付きのクジラ認識カード">
-      <a href="./assets/targets/whale-card-white.png" download>クジラカードを保存</a>
+      <img src="./assets/targets/markers/whale-id1-30mm.svg" alt="クジラ用AprilTag ID 1">
+      <small>AprilTag ID 1</small>
+      <a href="./assets/targets/markers/whale-id1-30mm.svg" download>クジラ用SVGを保存</a>
     </section>
     <section class="card">
       <h2>03 ウミガメ</h2>
-      <img src="./assets/targets/turtle-card-white.png" alt="白い模型スペース付きのウミガメ認識カード">
-      <a href="./assets/targets/turtle-card-white.png" download>カメカードを保存</a>
+      <img src="./assets/targets/markers/turtle-id2-30mm.svg" alt="ウミガメ用AprilTag ID 2">
+      <small>AprilTag ID 2</small>
+      <a href="./assets/targets/markers/turtle-id2-30mm.svg" download>ウミガメ用SVGを保存</a>
     </section>
   </main>
 
   <section class="steps">
     <h2>実機確認</h2>
     <ol>
-      <li>このページをPCや別端末に表示するか、カードをカラー印刷します。</li>
-      <li>スマホでARトップページを開き、カメラの使用を許可します。</li>
-      <li>カードの四隅まで画面に入れ、30〜60cm程度の距離から映します。</li>
-      <li>認識後は、カードが画面端に少し残る範囲でスマホをゆっくり動かします。</li>
+      <li>A4印刷用PDFを「100%／実際のサイズ／拡大縮小なし」で白色マット紙へ印刷します。</li>
+      <li>点線で切り、上部の丸へ穴を開け、細いゴムや糸で対応する模型へ付けます。</li>
+      <li>iPadでARトップページを開き、内カメラの使用を許可します。</li>
+      <li>30mm角のマーカー全体を枠内へ入れ、約15〜35cmの距離から2〜3秒見せます。</li>
+      <li>ゲームが始まったら、模型とマーカーを画面外へ移して遊べます。</li>
     </ol>
   </section>
 </body>

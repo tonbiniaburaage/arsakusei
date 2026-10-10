@@ -663,7 +663,7 @@ export class EffectController {
     if (this.game.phase.endsWith('celebrate')) this.drawCelebration();
     if (this.game.phase === 'light-collect') {
       this.drawLightAbsorption();
-      this.drawGameLabel('光る模型をカメラに映して、海の光を集めよう！', '✦');
+      this.drawGameLabel('模型からあふれる海の光を集めよう！', '✦');
     }
     if (this.game.phase === 'stamp') {
       this.drawStampAward();

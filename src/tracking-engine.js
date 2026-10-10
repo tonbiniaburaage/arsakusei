@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MindARThree } from 'mindar-image-three';
-import { CreatureController } from './creature-controller.js?v=20261010-ipad-models3';
-import { ResinModelDetector } from './resin-model-detector.js?v=20261010-ipad-models3';
+import { CreatureController } from './creature-controller.js?v=20261010-apriltag1';
+import { AprilTagMarkerDetector } from './apriltag-marker-detector.js?v=20261010-apriltag1';
 
 const TARGETS = [
   { key: 'jellyfish', targetIndex: 0, offset: [0, 0, 0.2], sizeCorrection: 1 },
@@ -28,7 +28,7 @@ export class TrackingEngine {
     this.activeEntry = null;
     this.entries = [];
     this.modelVideo = null;
-    this.modelDetector = new ResinModelDetector();
+    this.modelDetector = new AprilTagMarkerDetector();
     this.modelLastSeen = -Infinity;
     this.modelHoldSeconds = 2.8;
     this.roughEntries = new Map();
@@ -44,7 +44,8 @@ export class TrackingEngine {
       container,
       imageTargetSrc: './assets/targets/creature-targets.mind?v=20261010-ipad-models3',
       maxTrack: 1,
-      // 手持ちカードを2〜3秒見せる運用で、連続2フレームで起動する。
+      // 旧カードも引き続き利用できるように残す。新しい小型マーカーは
+      // WebAssemblyのAprilTag検出器で連続2回読み取って起動する。
       warmupTolerance: 2,
       missTolerance: 68,
       filterMinCF: 0.0012,
@@ -209,8 +210,10 @@ export class TrackingEngine {
   }
 
   async start() {
-    const results = await Promise.all(this.entries.map(({ controller }) => controller.load()));
-    await this.modelDetector.initialize();
+    const [results] = await Promise.all([
+      Promise.all(this.entries.map(({ controller }) => controller.load())),
+      this.modelDetector.initialize()
+    ]);
     await this.mindar.start();
     this.modelVideo = this.getCaptureSources().video;
     await this.tuneCameraForKiosk(this.modelVideo);
@@ -349,7 +352,8 @@ export class TrackingEngine {
       this.gameLockedKey = entry.key;
       this.effects.setActive(entry.key);
       this.callbacks.onTargetFound?.(entry.key, entry.config, {
-        rough: true,
+        marker: true,
+        tagId: match.tagId,
         confidence: match.confidence
       });
     }
@@ -416,7 +420,7 @@ export class TrackingEngine {
       this.started = false;
     }
     this.hideModelFallbacks();
-    this.modelDetector.reset();
+    this.modelDetector.stop();
     this.gameLockedKey = null;
     if (this.releaseTimer) clearTimeout(this.releaseTimer);
     this.releaseTimer = null;

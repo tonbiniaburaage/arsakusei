@@ -1,8 +1,8 @@
-import { AREngine } from './ar-engine.js?v=20261010-ipad-models3';
-import { TrackingEngine } from './tracking-engine.js?v=20261010-ipad-models3';
-import { EffectController } from './effect-controller.js?v=20261010-ipad-models3';
-import { PhotoController } from './photo-controller.js?v=20261010-ipad-models3';
-import { CREATURE_ORDER, CREATURES, qualityProfile } from './creature-config.js?v=20261010-ipad-models3';
+import { AREngine } from './ar-engine.js?v=20261010-apriltag1';
+import { TrackingEngine } from './tracking-engine.js?v=20261010-apriltag1';
+import { EffectController } from './effect-controller.js?v=20261010-apriltag1';
+import { PhotoController } from './photo-controller.js?v=20261010-apriltag1';
+import { CREATURE_ORDER, CREATURES, qualityProfile } from './creature-config.js?v=20261010-apriltag1';
 
 const stage = document.querySelector('#stage');
 const effectsCanvas = document.querySelector('#effects');
@@ -37,7 +37,7 @@ effects.setGameCallbacks({
     if (phase === 'whale-celebrate') status.textContent = 'クジラ、クリア！';
     if (phase === 'turtle-polish') status.textContent = `甲羅をぐるぐる磨こう！　${count}/${total}秒`;
     if (phase === 'turtle-celebrate') status.textContent = 'カメ、クリア！';
-    if (phase === 'light-collect') status.textContent = '光る模型をカメラに映して、海の光を集めよう！';
+    if (phase === 'light-collect') status.textContent = '模型からあふれる海の光を集めよう！';
     if (phase === 'stamp') {
       status.textContent = remaining > 0
         ? '次の海の生き物にカメラを向けてみよう！'
@@ -144,7 +144,7 @@ async function startExperience({ tracking, config, auto = false }) {
       trackingGuide.hidden = false;
       activeCreature.hidden = true;
       photoController.setEnabled(false);
-      status.textContent = '光る模型をカメラに映して、海の光を集めよう！';
+      status.textContent = '模型と一緒に識別マーカーをカメラへ見せてください';
     } else {
       activeCreature.textContent = `${config.icon} ${config.label}`;
       activeCreature.hidden = false;
@@ -177,8 +177,8 @@ async function startExperience({ tracking, config, auto = false }) {
 
 function handleTargetFound(key, config, detail = {}) {
   trackingGuide.hidden = true;
-  activeCreature.textContent = detail.rough
-    ? `${config.icon} ${config.label}の模型を認識`
+  activeCreature.textContent = detail.marker
+    ? `${config.icon} ${config.label}のマーカーを認識`
     : `${config.icon} ${config.label}を認識`;
   activeCreature.hidden = false;
   photoController.setEnabled(true);
@@ -190,7 +190,7 @@ function handleTargetLost(key, config) {
   activeCreature.hidden = true;
   trackingGuide.hidden = false;
   photoController.setEnabled(false);
-  status.textContent = '次の光る模型をカメラに映してください';
+  status.textContent = '次の模型の識別マーカーをカメラへ見せてください';
 }
 
 function leaveWelcome() {
@@ -213,7 +213,7 @@ function restartFromBeginning() {
   const activeKey = effects.activeKey;
   engine?.reset?.();
   effects.resetProgress(activeKey);
-  if (!activeKey) status.textContent = '光る模型をカメラに映して、海の光を集めよう！';
+  if (!activeKey) status.textContent = '模型と一緒に識別マーカーをカメラへ見せてください';
 }
 
 addEventListener('pagehide', () => {
