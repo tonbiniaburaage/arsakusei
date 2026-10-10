@@ -19,14 +19,18 @@
   </table>
   <p id="summary">Running…</p>
   <script type="module">
-    import { ResinModelDetector } from '../src/resin-model-detector.js?v=20261010-ipad-models1';
-    import { qualityProfile } from '../src/creature-config.js?v=20261010-ipad-models1';
+    import { ResinModelDetector } from '../src/resin-model-detector.js?v=20261010-ipad-models2';
+    import { qualityProfile } from '../src/creature-config.js?v=20261010-ipad-models2';
 
-    const crop = { x: 375, y: 65, width: 445, height: 465 };
     const sources = {
       jellyfish: '../assets/targets/resin-jellyfish-reference.png',
       whale: '../assets/targets/resin-whale-reference.png',
       turtle: '../assets/targets/resin-turtle-reference.png'
+    };
+    const crops = {
+      jellyfish: { x: 0.17, y: 0.1, width: 0.66, height: 0.78 },
+      whale: { x: 0.02, y: 0.1, width: 0.88, height: 0.58 },
+      turtle: { x: 0.1, y: 0.2, width: 0.72, height: 0.64 }
     };
     const detector = new ResinModelDetector();
     await detector.initialize();
@@ -38,16 +42,8 @@
 
     for (const [expected, src] of Object.entries(sources)) {
       const image = await loadImage(src);
-      context.clearRect(0, 0, canvas.width, canvas.height);
-      context.drawImage(image, crop.x, crop.y, crop.width, crop.height, 0, 0, canvas.width, canvas.height);
-      const normal = analyze(context.getImageData(0, 0, canvas.width, canvas.height));
-      const darkData = context.getImageData(0, 0, canvas.width, canvas.height);
-      for (let index = 0; index < darkData.data.length; index += 4) {
-        darkData.data[index] *= 0.24;
-        darkData.data[index + 1] *= 0.24;
-        darkData.data[index + 2] *= 0.24;
-      }
-      const dark = analyze(darkData);
+      const normal = analyze(renderCameraFrame(image, crops[expected], 1, false));
+      const dark = analyze(renderCameraFrame(image, crops[expected], 0.24, true));
       rows.push({ expected, normal, dark });
     }
 
@@ -72,8 +68,7 @@
     document.querySelector('#summary').className = passed ? 'pass' : 'fail';
     document.body.dataset.status = passed ? 'pass' : 'fail';
 
-    function analyze(imageData) {
-      const descriptor = detector.describe(imageData);
+    function analyze(descriptor) {
       if (!descriptor) return { key: null, debug: 'no descriptor' };
       const scores = detector.rank(descriptor);
       const result = detector.classify(descriptor);
@@ -87,6 +82,36 @@
           scores: scores.map(({ key, score }) => [key, score.toFixed(3)])
         })
       };
+    }
+
+    function renderCameraFrame(image, crop, brightness, mirror) {
+      context.save();
+      context.fillStyle = '#62482f';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      const sourceX = image.naturalWidth * crop.x;
+      const sourceY = image.naturalHeight * crop.y;
+      const sourceWidth = image.naturalWidth * crop.width;
+      const sourceHeight = image.naturalHeight * crop.height;
+      const scale = Math.min(canvas.width * 0.72 / sourceWidth, canvas.height * 0.82 / sourceHeight);
+      const width = sourceWidth * scale;
+      const height = sourceHeight * scale;
+      const x = (canvas.width - width) * 0.5;
+      const y = (canvas.height - height) * 0.5;
+      if (mirror) {
+        context.translate(canvas.width, 0);
+        context.scale(-1, 1);
+      }
+      context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height);
+      context.restore();
+      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+      if (brightness !== 1) {
+        for (let index = 0; index < imageData.data.length; index += 4) {
+          imageData.data[index] *= brightness;
+          imageData.data[index + 1] *= brightness;
+          imageData.data[index + 2] *= brightness;
+        }
+      }
+      return detector.describe(imageData);
     }
 
     function loadImage(src) {

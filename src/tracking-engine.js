@@ -1,16 +1,16 @@
 import * as THREE from 'three';
 import { MindARThree } from 'mindar-image-three';
-import { CreatureController } from './creature-controller.js?v=20261010-ipad-models1';
-import { ResinModelDetector } from './resin-model-detector.js?v=20261010-ipad-models1';
+import { CreatureController } from './creature-controller.js?v=20261010-ipad-models2';
+import { ResinModelDetector } from './resin-model-detector.js?v=20261010-ipad-models2';
 
 const TARGETS = [
   { key: 'jellyfish', targetIndex: 0, offset: [0, 0, 0.2], sizeCorrection: 1 },
   { key: 'whale', targetIndex: 1, offset: [0, 0, 0.2], sizeCorrection: 1 },
   { key: 'turtle', targetIndex: 2, offset: [0, 0, 0.2], sizeCorrection: 1 },
-  // 同じカードの部分画像。斜めからカードの左側／下側だけ見えた場合にも使う。
-  // 左側ターゲットは幅390px、元カードは幅900px。座標系の幅差を補正して同じ表示サイズにする。
-  { key: 'jellyfish', targetIndex: 3, offset: [0.64, 0, 0.2], sizeCorrection: 900 / 390 },
-  { key: 'jellyfish', targetIndex: 4, offset: [0, 0.18, 0.2], sizeCorrection: 1 }
+  // 模型を置く右側が白い補助カードも同じ生き物として認識する。
+  { key: 'jellyfish', targetIndex: 3, offset: [0, 0, 0.2], sizeCorrection: 1 },
+  { key: 'whale', targetIndex: 4, offset: [0, 0, 0.2], sizeCorrection: 1 },
+  { key: 'turtle', targetIndex: 5, offset: [0, 0, 0.2], sizeCorrection: 1 }
 ];
 
 export class TrackingEngine {
@@ -42,7 +42,7 @@ export class TrackingEngine {
     this.smoothingScale = new THREE.Vector3();
     this.mindar = new MindARThree({
       container,
-      imageTargetSrc: './assets/targets/creature-targets.mind?v=20261010-ipad-models1',
+      imageTargetSrc: './assets/targets/creature-targets.mind?v=20261010-ipad-models2',
       maxTrack: 1,
       warmupTolerance: 3,
       missTolerance: 68,
@@ -52,6 +52,8 @@ export class TrackingEngine {
       uiScanning: 'no',
       uiError: 'no'
     });
+    // 展示ではiPadの画面側に模型を置くため、内カメラを明示的に使う。
+    this.mindar.shouldFaceUser = true;
 
     this.renderer = this.mindar.renderer;
     this.scene = this.mindar.scene;

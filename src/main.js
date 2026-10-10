@@ -1,8 +1,8 @@
-import { AREngine } from './ar-engine.js?v=20261010-ipad-models1';
-import { TrackingEngine } from './tracking-engine.js?v=20261010-ipad-models1';
-import { EffectController } from './effect-controller.js?v=20261010-ipad-models1';
-import { PhotoController } from './photo-controller.js?v=20261010-ipad-models1';
-import { CREATURE_ORDER, CREATURES, qualityProfile } from './creature-config.js?v=20261010-ipad-models1';
+import { AREngine } from './ar-engine.js?v=20261010-ipad-models2';
+import { TrackingEngine } from './tracking-engine.js?v=20261010-ipad-models2';
+import { EffectController } from './effect-controller.js?v=20261010-ipad-models2';
+import { PhotoController } from './photo-controller.js?v=20261010-ipad-models2';
+import { CREATURE_ORDER, CREATURES, qualityProfile } from './creature-config.js?v=20261010-ipad-models2';
 
 const stage = document.querySelector('#stage');
 const effectsCanvas = document.querySelector('#effects');
@@ -119,7 +119,7 @@ async function startExperience({ tracking, config, auto = false }) {
   startButton.disabled = true;
   demoButton.disabled = true;
   startButton.textContent = tracking ? 'カメラを準備中…' : '演出を準備中…';
-  status.textContent = tracking ? 'カメラの使用を許可してください' : `${config.label}を準備しています`;
+  status.textContent = tracking ? 'iPadの内カメラの使用を許可してください' : `${config.label}を準備しています`;
 
   try {
     engine?.stop?.();

@@ -2,7 +2,7 @@
 
 ## 模型参照画像
 
-`resin-model-detector.js` が次の3枚の右側写真領域を読み込み、光るレジン模型の色と輪郭を比較します。
+`resin-model-detector.js` が次の3枚の実物模型写真を読み込み、光るレジン模型の色と輪郭を比較します。
 
 | 種類 | 参照画像 |
 | --- | --- |
@@ -18,10 +18,11 @@
 
 | Index | 種類 | カード |
 | --- | --- | --- |
-| 0 | クラゲ | `jellyfish-card-white.png` |
-| 1 | クジラ | `whale-card-white.png` |
-| 2 | ウミガメ | `turtle-card-white.png` |
-| 3 | クラゲ | `jellyfish-card-white.png` の左側 |
-| 4 | クラゲ | `jellyfish-card-white.png` の下側 |
+| 0 | クラゲ | `jellyfish-card.png` |
+| 1 | クジラ | `whale-card.png` |
+| 2 | ウミガメ | `turtle-card.png` |
+| 3 | クラゲ | `jellyfish-card-white.png` |
+| 4 | クジラ | `whale-card-white.png` |
+| 5 | ウミガメ | `turtle-card-white.png` |
 
-5ターゲットの認識データは `creature-targets.mind` です。模型単体の認識が会場照明で不安定な場合は、カードを模型の下へ敷くことで補助できます。
+6ターゲットの認識データは `creature-targets.mind` です。写真入りカードと、模型を上に置く白地カードの両方を認識します。

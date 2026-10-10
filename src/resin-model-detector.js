@@ -1,12 +1,19 @@
 const SCAN_WIDTH = 160;
 const SCAN_HEIGHT = 120;
 const GRID_SIZE = 12;
-const REFERENCE_CROP = { x: 375, y: 65, width: 445, height: 465 };
-
 const REFERENCE_SOURCES = {
-  jellyfish: new URL('../assets/targets/resin-jellyfish-reference.png', import.meta.url).href,
-  whale: new URL('../assets/targets/resin-whale-reference.png', import.meta.url).href,
-  turtle: new URL('../assets/targets/resin-turtle-reference.png', import.meta.url).href
+  jellyfish: {
+    src: new URL('../assets/targets/resin-jellyfish-reference.png', import.meta.url).href,
+    crop: { x: 0.17, y: 0.1, width: 0.66, height: 0.78 }
+  },
+  whale: {
+    src: new URL('../assets/targets/resin-whale-reference.png', import.meta.url).href,
+    crop: { x: 0.02, y: 0.1, width: 0.88, height: 0.58 }
+  },
+  turtle: {
+    src: new URL('../assets/targets/resin-turtle-reference.png', import.meta.url).href,
+    crop: { x: 0.1, y: 0.2, width: 0.72, height: 0.64 }
+  }
 };
 
 const FALLBACK_DESCRIPTORS = {
@@ -36,35 +43,13 @@ export class ResinModelDetector {
   }
 
   async initialize() {
-    const entries = await Promise.all(Object.entries(REFERENCE_SOURCES).map(async ([key, src]) => {
+    const entries = await Promise.all(Object.entries(REFERENCE_SOURCES).map(async ([key, source]) => {
       try {
-        const image = await loadImage(src);
-        this.context.clearRect(0, 0, SCAN_WIDTH, SCAN_HEIGHT);
-        this.context.drawImage(
-          image,
-          REFERENCE_CROP.x,
-          REFERENCE_CROP.y,
-          REFERENCE_CROP.width,
-          REFERENCE_CROP.height,
-          0,
-          0,
-          SCAN_WIDTH,
-          SCAN_HEIGHT
-        );
-        const imageData = this.context.getImageData(0, 0, SCAN_WIDTH, SCAN_HEIGHT);
-        const normalDescriptor = this.describe(imageData);
-        const darkImageData = new ImageData(
-          new Uint8ClampedArray(imageData.data),
-          imageData.width,
-          imageData.height
-        );
-        for (let index = 0; index < darkImageData.data.length; index += 4) {
-          darkImageData.data[index] *= 0.24;
-          darkImageData.data[index + 1] *= 0.24;
-          darkImageData.data[index + 2] *= 0.24;
-        }
-        const darkDescriptor = this.describe(darkImageData);
-        return [key, [normalDescriptor, darkDescriptor].filter(Boolean)];
+        const image = await loadImage(source.src);
+        const descriptors = [1, 0.45, 0.24]
+          .map((brightness) => this.describeReferenceImage(key, image, brightness))
+          .filter(Boolean);
+        return [key, descriptors];
       } catch (error) {
         console.warn(`模型の参照画像を読み込めませんでした: ${key}`, error);
         return [key, null];
@@ -75,6 +60,21 @@ export class ResinModelDetector {
       if (descriptors?.length) this.references.set(key, descriptors);
     }
     this.ready = true;
+  }
+
+  describeReferenceImage(key, image, brightness = 1) {
+    const source = REFERENCE_SOURCES[key];
+    if (!source || !image) return null;
+    drawContainedCrop(this.context, image, source.crop);
+    const imageData = this.context.getImageData(0, 0, SCAN_WIDTH, SCAN_HEIGHT);
+    if (brightness !== 1) {
+      for (let index = 0; index < imageData.data.length; index += 4) {
+        imageData.data[index] *= brightness;
+        imageData.data[index + 1] *= brightness;
+        imageData.data[index + 2] *= brightness;
+      }
+    }
+    return this.describe(imageData);
   }
 
   reset() {
@@ -321,6 +321,23 @@ function loadImage(src) {
     image.onerror = reject;
     image.src = src;
   });
+}
+
+function drawContainedCrop(context, image, crop) {
+  const sourceX = image.naturalWidth * crop.x;
+  const sourceY = image.naturalHeight * crop.y;
+  const sourceWidth = image.naturalWidth * crop.width;
+  const sourceHeight = image.naturalHeight * crop.height;
+  const scale = Math.min(SCAN_WIDTH / sourceWidth, SCAN_HEIGHT / sourceHeight);
+  const width = sourceWidth * scale;
+  const height = sourceHeight * scale;
+  const x = (SCAN_WIDTH - width) * 0.5;
+  const y = (SCAN_HEIGHT - height) * 0.5;
+  context.save();
+  context.fillStyle = '#000';
+  context.fillRect(0, 0, SCAN_WIDTH, SCAN_HEIGHT);
+  context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height);
+  context.restore();
 }
 
 function clamp(value, min, max) {
