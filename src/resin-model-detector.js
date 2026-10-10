@@ -1,0 +1,328 @@
+const SCAN_WIDTH = 160;
+const SCAN_HEIGHT = 120;
+const GRID_SIZE = 12;
+const REFERENCE_CROP = { x: 375, y: 65, width: 445, height: 465 };
+
+const REFERENCE_SOURCES = {
+  jellyfish: new URL('../assets/targets/resin-jellyfish-reference.png', import.meta.url).href,
+  whale: new URL('../assets/targets/resin-whale-reference.png', import.meta.url).href,
+  turtle: new URL('../assets/targets/resin-turtle-reference.png', import.meta.url).href
+};
+
+const FALLBACK_DESCRIPTORS = {
+  jellyfish: { aspect: 0.82, fill: 0.52, lowerRatio: 0.35 },
+  whale: { aspect: 1.62, fill: 0.48, lowerRatio: 0.48 },
+  turtle: { aspect: 1.28, fill: 0.55, lowerRatio: 0.52 }
+};
+
+export class ResinModelDetector {
+  constructor() {
+    this.canvas = document.createElement('canvas');
+    this.canvas.width = SCAN_WIDTH;
+    this.canvas.height = SCAN_HEIGHT;
+    this.context = this.canvas.getContext('2d', {
+      alpha: false,
+      willReadFrequently: true
+    });
+    this.mask = new Uint8Array(SCAN_WIDTH * SCAN_HEIGHT);
+    this.closedMask = new Uint8Array(SCAN_WIDTH * SCAN_HEIGHT);
+    this.visited = new Uint8Array(SCAN_WIDTH * SCAN_HEIGHT);
+    this.queue = new Uint32Array(SCAN_WIDTH * SCAN_HEIGHT);
+    this.references = new Map();
+    this.history = [];
+    this.lastCheck = -Infinity;
+    this.intervalSeconds = 0.16;
+    this.ready = false;
+  }
+
+  async initialize() {
+    const entries = await Promise.all(Object.entries(REFERENCE_SOURCES).map(async ([key, src]) => {
+      try {
+        const image = await loadImage(src);
+        this.context.clearRect(0, 0, SCAN_WIDTH, SCAN_HEIGHT);
+        this.context.drawImage(
+          image,
+          REFERENCE_CROP.x,
+          REFERENCE_CROP.y,
+          REFERENCE_CROP.width,
+          REFERENCE_CROP.height,
+          0,
+          0,
+          SCAN_WIDTH,
+          SCAN_HEIGHT
+        );
+        const imageData = this.context.getImageData(0, 0, SCAN_WIDTH, SCAN_HEIGHT);
+        const normalDescriptor = this.describe(imageData);
+        const darkImageData = new ImageData(
+          new Uint8ClampedArray(imageData.data),
+          imageData.width,
+          imageData.height
+        );
+        for (let index = 0; index < darkImageData.data.length; index += 4) {
+          darkImageData.data[index] *= 0.24;
+          darkImageData.data[index + 1] *= 0.24;
+          darkImageData.data[index + 2] *= 0.24;
+        }
+        const darkDescriptor = this.describe(darkImageData);
+        return [key, [normalDescriptor, darkDescriptor].filter(Boolean)];
+      } catch (error) {
+        console.warn(`模型の参照画像を読み込めませんでした: ${key}`, error);
+        return [key, null];
+      }
+    }));
+
+    for (const [key, descriptors] of entries) {
+      if (descriptors?.length) this.references.set(key, descriptors);
+    }
+    this.ready = true;
+  }
+
+  reset() {
+    this.history.length = 0;
+  }
+
+  scan(video, elapsedSeconds) {
+    if (!this.ready || !this.context || !video || video.readyState < 2 || !video.videoWidth) return null;
+    if (elapsedSeconds - this.lastCheck < this.intervalSeconds) return null;
+    this.lastCheck = elapsedSeconds;
+
+    try {
+      this.context.drawImage(video, 0, 0, SCAN_WIDTH, SCAN_HEIGHT);
+      const imageData = this.context.getImageData(0, 0, SCAN_WIDTH, SCAN_HEIGHT);
+      const descriptor = this.describe(imageData);
+      const result = descriptor ? this.classify(descriptor) : null;
+      return this.stabilize(result);
+    } catch {
+      return null;
+    }
+  }
+
+  describe(imageData) {
+    const { data, width, height } = imageData;
+    const histogram = new Uint32Array(64);
+    for (let index = 0; index < data.length; index += 16) {
+      const luminance = data[index] * 0.24 + data[index + 1] * 0.62 + data[index + 2] * 0.14;
+      histogram[Math.min(63, Math.floor(luminance / 4))] += 1;
+    }
+    const median = histogramPercentile(histogram, 0.5) * 4;
+    const high = Math.max(20, histogramPercentile(histogram, 0.88) * 4);
+    const gain = clamp(118 / high, 1, 3.4);
+
+    this.mask.fill(0);
+    for (let y = 1; y < height - 1; y += 1) {
+      for (let x = 1; x < width - 1; x += 1) {
+        const pixel = y * width + x;
+        const offset = pixel * 4;
+        const red = Math.min(255, data[offset] * gain);
+        const green = Math.min(255, data[offset + 1] * gain);
+        const blue = Math.min(255, data[offset + 2] * gain);
+        const luminance = red * 0.24 + green * 0.62 + blue * 0.14;
+        const coolRatio = (blue + 10) / (green + 10);
+        const redRatio = (red + 10) / (green + 10);
+        const chroma = Math.max(red, green, blue) - Math.min(red, green, blue);
+        const violet = coolRatio > 1.045
+          && redRatio > 0.78
+          && blue >= red * 0.9
+          && blue - green > Math.max(3, 11 / gain);
+        const translucent = luminance > Math.max(18, median * gain + 10)
+          && coolRatio > 0.985
+          && redRatio > 0.86
+          && blue >= red * 0.88
+          && chroma < 96;
+        if (violet || translucent) this.mask[pixel] = 1;
+      }
+    }
+
+    closeMask(this.mask, this.closedMask, width, height);
+    const component = this.largestComponent(this.closedMask, width, height);
+    if (!component) return null;
+
+    const bboxWidth = component.maxX - component.minX + 1;
+    const bboxHeight = component.maxY - component.minY + 1;
+    const coverage = component.area / (width * height);
+    if (component.area < 76 || bboxWidth < 11 || bboxHeight < 9 || coverage > 0.86) return null;
+
+    const grid = new Float32Array(GRID_SIZE * GRID_SIZE);
+    let lowerPixels = 0;
+    for (const pixel of component.pixels) {
+      const x = pixel % width;
+      const y = Math.floor(pixel / width);
+      const gridX = Math.min(GRID_SIZE - 1, Math.floor((x - component.minX) / bboxWidth * GRID_SIZE));
+      const gridY = Math.min(GRID_SIZE - 1, Math.floor((y - component.minY) / bboxHeight * GRID_SIZE));
+      grid[gridY * GRID_SIZE + gridX] += 1;
+      if (y >= component.minY + bboxHeight * 0.56) lowerPixels += 1;
+    }
+    const cellArea = Math.max(1, bboxWidth * bboxHeight / (GRID_SIZE * GRID_SIZE));
+    for (let index = 0; index < grid.length; index += 1) {
+      grid[index] = Math.min(1, grid[index] / cellArea);
+    }
+
+    return {
+      x: (component.minX + component.maxX) * 0.5 / width,
+      y: (component.minY + component.maxY) * 0.5 / height,
+      coverage,
+      aspect: bboxWidth / bboxHeight,
+      fill: component.area / (bboxWidth * bboxHeight),
+      lowerRatio: lowerPixels / component.area,
+      grid
+    };
+  }
+
+  largestComponent(mask, width, height) {
+    this.visited.fill(0);
+    let best = null;
+    for (let start = 0; start < mask.length; start += 1) {
+      if (!mask[start] || this.visited[start]) continue;
+      let head = 0;
+      let tail = 0;
+      this.queue[tail++] = start;
+      this.visited[start] = 1;
+      const pixels = [];
+      let minX = width;
+      let minY = height;
+      let maxX = 0;
+      let maxY = 0;
+
+      while (head < tail) {
+        const pixel = this.queue[head++];
+        pixels.push(pixel);
+        const x = pixel % width;
+        const y = Math.floor(pixel / width);
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+
+        for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+          for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+            if (!offsetX && !offsetY) continue;
+            const nextX = x + offsetX;
+            const nextY = y + offsetY;
+            if (nextX < 0 || nextX >= width || nextY < 0 || nextY >= height) continue;
+            const next = nextY * width + nextX;
+            if (!mask[next] || this.visited[next]) continue;
+            this.visited[next] = 1;
+            this.queue[tail++] = next;
+          }
+        }
+      }
+
+      if (!best || pixels.length > best.area) {
+        best = { area: pixels.length, pixels, minX, minY, maxX, maxY };
+      }
+    }
+    return best;
+  }
+
+  classify(descriptor) {
+    const scores = this.rank(descriptor);
+    const best = scores[0];
+    const margin = best.score - scores[1].score;
+    if (best.score < 0.47 || margin < 0.025) return null;
+    return {
+      key: best.key,
+      confidence: clamp(best.score * 0.78 + margin * 1.8, 0, 1),
+      x: descriptor.x,
+      y: descriptor.y,
+      coverage: descriptor.coverage
+    };
+  }
+
+  rank(descriptor) {
+    const scores = [];
+    for (const key of Object.keys(REFERENCE_SOURCES)) {
+      const references = this.references.get(key) || [FALLBACK_DESCRIPTORS[key]];
+      let score = Math.max(...references.map((reference) => {
+        const gridScore = reference.grid ? Math.max(
+          gridSimilarity(descriptor.grid, reference.grid, false),
+          gridSimilarity(descriptor.grid, reference.grid, true)
+        ) : 0.45;
+        const aspectScore = Math.exp(-Math.abs(Math.log(descriptor.aspect / reference.aspect)) * 1.5);
+        const fillScore = Math.max(0, 1 - Math.abs(descriptor.fill - reference.fill) * 2.4);
+        const lowerScore = Math.max(0, 1 - Math.abs(descriptor.lowerRatio - reference.lowerRatio) * 3.2);
+        return gridScore * 0.55 + aspectScore * 0.23 + fillScore * 0.08 + lowerScore * 0.14;
+      }));
+
+      if (key === 'jellyfish' && descriptor.aspect < 1.02 && descriptor.lowerRatio > 0.27) score += 0.08;
+      if (key === 'whale' && descriptor.aspect > 1.48) score += 0.07;
+      if (key === 'turtle' && descriptor.aspect >= 1.02 && descriptor.aspect <= 1.55) score += 0.035;
+      scores.push({ key, score });
+    }
+    scores.sort((a, b) => b.score - a.score);
+    return scores;
+  }
+
+  stabilize(result) {
+    this.history.push(result);
+    if (this.history.length > 7) this.history.shift();
+    if (!result) return null;
+
+    const matching = this.history.filter((entry) => entry?.key === result.key);
+    if (matching.length < 4) return null;
+    const confidence = matching.reduce((sum, entry) => sum + entry.confidence, 0) / matching.length;
+    if (confidence < 0.48) return null;
+    return {
+      key: result.key,
+      confidence,
+      x: matching.reduce((sum, entry) => sum + entry.x, 0) / matching.length,
+      y: matching.reduce((sum, entry) => sum + entry.y, 0) / matching.length,
+      coverage: matching.reduce((sum, entry) => sum + entry.coverage, 0) / matching.length
+    };
+  }
+}
+
+function closeMask(source, target, width, height) {
+  target.fill(0);
+  for (let y = 1; y < height - 1; y += 1) {
+    for (let x = 1; x < width - 1; x += 1) {
+      const index = y * width + x;
+      let neighbors = 0;
+      for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+        for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+          neighbors += source[(y + offsetY) * width + x + offsetX];
+        }
+      }
+      if (source[index] || neighbors >= 3) target[index] = 1;
+    }
+  }
+}
+
+function gridSimilarity(candidate, reference, mirror) {
+  let overlap = 0;
+  let total = 0;
+  for (let y = 0; y < GRID_SIZE; y += 1) {
+    for (let x = 0; x < GRID_SIZE; x += 1) {
+      const candidateValue = candidate[y * GRID_SIZE + x];
+      const referenceX = mirror ? GRID_SIZE - 1 - x : x;
+      const referenceValue = reference[y * GRID_SIZE + referenceX];
+      overlap += Math.min(candidateValue, referenceValue);
+      total += Math.max(candidateValue, referenceValue);
+    }
+  }
+  return total ? overlap / total : 0;
+}
+
+function histogramPercentile(histogram, percentile) {
+  const total = histogram.reduce((sum, value) => sum + value, 0);
+  const target = total * percentile;
+  let count = 0;
+  for (let index = 0; index < histogram.length; index += 1) {
+    count += histogram[index];
+    if (count >= target) return index;
+  }
+  return histogram.length - 1;
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.decoding = 'async';
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = src;
+  });
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}

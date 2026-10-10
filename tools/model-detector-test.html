@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>Resin model detector test</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 24px; color: #17213b; }
+    table { border-collapse: collapse; }
+    th, td { border: 1px solid #ccd4e8; padding: 8px 12px; text-align: left; }
+    .pass { color: #08783f; font-weight: 700; }
+    .fail { color: #b42318; font-weight: 700; }
+  </style>
+</head>
+<body data-status="running">
+  <h1>Resin model detector test</h1>
+  <table>
+    <thead><tr><th>Model</th><th>Normal</th><th>Dark 24%</th></tr></thead>
+    <tbody id="results"></tbody>
+  </table>
+  <p id="summary">Running…</p>
+  <script type="module">
+    import { ResinModelDetector } from '../src/resin-model-detector.js?v=20261010-ipad-models1';
+    import { qualityProfile } from '../src/creature-config.js?v=20261010-ipad-models1';
+
+    const crop = { x: 375, y: 65, width: 445, height: 465 };
+    const sources = {
+      jellyfish: '../assets/targets/resin-jellyfish-reference.png',
+      whale: '../assets/targets/resin-whale-reference.png',
+      turtle: '../assets/targets/resin-turtle-reference.png'
+    };
+    const detector = new ResinModelDetector();
+    await detector.initialize();
+    const canvas = document.createElement('canvas');
+    canvas.width = 160;
+    canvas.height = 120;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    const rows = [];
+
+    for (const [expected, src] of Object.entries(sources)) {
+      const image = await loadImage(src);
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, crop.x, crop.y, crop.width, crop.height, 0, 0, canvas.width, canvas.height);
+      const normal = analyze(context.getImageData(0, 0, canvas.width, canvas.height));
+      const darkData = context.getImageData(0, 0, canvas.width, canvas.height);
+      for (let index = 0; index < darkData.data.length; index += 4) {
+        darkData.data[index] *= 0.24;
+        darkData.data[index + 1] *= 0.24;
+        darkData.data[index + 2] *= 0.24;
+      }
+      const dark = analyze(darkData);
+      rows.push({ expected, normal, dark });
+    }
+
+    const profile = qualityProfile();
+    window.__detectorDiagnostics = rows;
+    const recognitionPassed = rows.every(({ expected, normal, dark }) => normal.key === expected && dark.key === expected);
+    const profilePassed = profile.mode === 'ipad-mini-6-kiosk'
+      && profile.lightweight === false
+      && profile.lowPower === false
+      && profile.maxFPS === 30;
+    const passed = recognitionPassed && profilePassed;
+    document.querySelector('#results').innerHTML = rows.map(({ expected, normal, dark }) => `
+      <tr>
+        <th>${expected}</th>
+        <td class="${normal.key === expected ? 'pass' : 'fail'}">${normal.key || 'no match'}<br><small>${normal.debug}</small></td>
+        <td class="${dark.key === expected ? 'pass' : 'fail'}">${dark.key || 'no match'}<br><small>${dark.debug}</small></td>
+      </tr>
+    `).join('');
+    document.querySelector('#summary').textContent = passed
+      ? 'PASS — 3 models, dark-scene compensation, and iPad kiosk profile'
+      : `FAIL — profile=${JSON.stringify(profile)}`;
+    document.querySelector('#summary').className = passed ? 'pass' : 'fail';
+    document.body.dataset.status = passed ? 'pass' : 'fail';
+
+    function analyze(imageData) {
+      const descriptor = detector.describe(imageData);
+      if (!descriptor) return { key: null, debug: 'no descriptor' };
+      const scores = detector.rank(descriptor);
+      const result = detector.classify(descriptor);
+      return {
+        key: result?.key || null,
+        debug: JSON.stringify({
+          aspect: descriptor.aspect.toFixed(3),
+          fill: descriptor.fill.toFixed(3),
+          lower: descriptor.lowerRatio.toFixed(3),
+          coverage: descriptor.coverage.toFixed(3),
+          scores: scores.map(({ key, score }) => [key, score.toFixed(3)])
+        })
+      };
+    }
+
+    function loadImage(src) {
+      return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = reject;
+        image.src = src;
+      });
+    }
+  </script>
+</body>
+</html>
