@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { MindARThree } from 'mindar-image-three';
-import { CreatureController } from './creature-controller.js?v=20260801-stable-v12';
+import { CreatureController } from './creature-controller.js?v=20261010-ipad-models1';
+import { ResinModelDetector } from './resin-model-detector.js?v=20261010-ipad-models1';
 
 const TARGETS = [
   { key: 'jellyfish', targetIndex: 0, offset: [0, 0, 0.2], sizeCorrection: 1 },
@@ -26,33 +27,27 @@ export class TrackingEngine {
     this.activeKey = null;
     this.activeEntry = null;
     this.entries = [];
-    this.roughVideo = null;
-    this.roughLastCheck = 0;
-    this.roughStableFrames = 0;
-    this.roughLastSeen = -Infinity;
-    this.roughHoldSeconds = 3.8;
+    this.modelVideo = null;
+    this.modelDetector = new ResinModelDetector();
+    this.modelLastSeen = -Infinity;
+    this.modelHoldSeconds = 2.8;
+    this.roughEntries = new Map();
+    this.gameLockedKey = null;
+    this.releaseTimer = null;
     this.lossHoldMs = 2800;
     this.lossFadeMs = 700;
     this.stateRetentionMs = 7000;
     this.smoothingPosition = new THREE.Vector3();
     this.smoothingQuaternion = new THREE.Quaternion();
     this.smoothingScale = new THREE.Vector3();
-    this.scanCanvas = document.createElement('canvas');
-    this.scanCanvas.width = 120;
-    this.scanCanvas.height = 90;
-    this.scanContext = this.scanCanvas.getContext('2d', {
-      alpha: false,
-      willReadFrequently: true
-    });
-
     this.mindar = new MindARThree({
       container,
-      imageTargetSrc: './assets/targets/creature-targets.mind?v=20260729-whitecards',
+      imageTargetSrc: './assets/targets/creature-targets.mind?v=20261010-ipad-models1',
       maxTrack: 1,
-      warmupTolerance: 2,
-      missTolerance: 35,
-      filterMinCF: 0.0015,
-      filterBeta: 2.5,
+      warmupTolerance: 3,
+      missTolerance: 68,
+      filterMinCF: 0.0012,
+      filterBeta: 2.2,
       uiLoading: 'no',
       uiScanning: 'no',
       uiError: 'no'
@@ -65,7 +60,7 @@ export class TrackingEngine {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     TARGETS.forEach((target) => this.addCreatureAnchor(target));
-    this.addRoughFallback();
+    this.addModelFallbacks();
     this.effects.connect(this.camera, this.entries);
 
     this.scene.add(new THREE.HemisphereLight(0xf3eaff, 0x10213d, 2.55));
@@ -105,6 +100,8 @@ export class TrackingEngine {
     this.entries.push(entry);
 
     anchor.onTargetFound = () => {
+      if (this.gameLockedKey && this.gameLockedKey !== key) return;
+      if (!this.gameLockedKey && this.effects.collectedStamps?.has(key)) return;
       const resumedDuringGrace = this.activeEntry === entry && smoothRoot.visible;
       const handoffEntry = this.activeEntry !== entry
         && this.activeEntry?.key === key
@@ -132,9 +129,10 @@ export class TrackingEngine {
       if (!resumedDuringGrace && !handoffEntry) entry.initialized = false;
       smoothRoot.visible = true;
       controller.setTrackingOpacity(1);
-      this.hideRoughFallback();
+      this.hideModelFallbacks();
       this.activeKey = key;
       this.activeEntry = entry;
+      this.gameLockedKey = key;
       if (!resumedDuringGrace && !handoffEntry && !resumeGame) controller.reset();
       this.effects.setActive(key);
       if (!resumedDuringGrace && !handoffEntry) this.callbacks.onTargetFound?.(key, config);
@@ -142,6 +140,13 @@ export class TrackingEngine {
     };
     anchor.onTargetLost = () => {
       entry.tracked = false;
+      if (this.gameLockedKey === key) {
+        // ゲーム開始後はスタンプ取得まで、最後に認識した位置で演出を継続する。
+        entry.lossStartedAt = performance.now();
+        controller.setTrackingOpacity(1);
+        smoothRoot.visible = true;
+        return;
+      }
       if (entry.lossTimer) clearTimeout(entry.lossTimer);
       if (entry.stateTimer) clearTimeout(entry.stateTimer);
       entry.lossStartedAt = performance.now();
@@ -177,30 +182,35 @@ export class TrackingEngine {
     }
   }
 
-  addRoughFallback() {
-    const config = this.configs.jellyfish;
-    const world = new THREE.Group();
-    world.visible = false;
-    world.position.z = -4;
-    this.camera.add(world);
+  addModelFallbacks() {
+    for (const config of Object.values(this.configs)) {
+      const world = new THREE.Group();
+      world.visible = false;
+      world.position.z = -4;
+      this.camera.add(world);
+      const controller = new CreatureController(world, config, { worldScale: 0.8 });
+      const entry = {
+        key: config.key,
+        config,
+        targetIndex: -1,
+        anchor: null,
+        world,
+        controller,
+        rough: true,
+        tracked: false
+      };
+      this.roughEntries.set(config.key, entry);
+      this.entries.push(entry);
+    }
     this.scene.add(this.camera);
-    const controller = new CreatureController(world, config, { worldScale: 0.8 });
-    this.roughEntry = {
-      key: 'jellyfish',
-      config,
-      targetIndex: -1,
-      anchor: null,
-      world,
-      controller,
-      rough: true
-    };
-    this.entries.push(this.roughEntry);
   }
 
   async start() {
     const results = await Promise.all(this.entries.map(({ controller }) => controller.load()));
+    await this.modelDetector.initialize();
     await this.mindar.start();
-    this.roughVideo = this.getCaptureSources().video;
+    this.modelVideo = this.getCaptureSources().video;
+    await this.tuneCameraForKiosk(this.modelVideo);
     this.started = true;
     this.renderer.setAnimationLoop((timestamp) => this.render(timestamp));
     return { results, tracking: true };
@@ -212,7 +222,7 @@ export class TrackingEngine {
     const delta = Math.min(this.clock.getDelta(), 0.05);
     const elapsed = this.clock.elapsedTime;
     this.updateSmoothedAnchors(delta);
-    this.updateRoughDetection(elapsed);
+    this.updateModelDetection(elapsed);
     this.entries.forEach(({ controller }) => controller.update(delta, elapsed));
     this.renderer.render(this.scene, this.camera);
     this.effects.update(delta);
@@ -239,6 +249,11 @@ export class TrackingEngine {
     for (const entry of this.entries) {
       if (entry.rough || !entry.smoothRoot) continue;
       if (!entry.tracked) {
+        if (this.gameLockedKey === entry.key) {
+          entry.controller.setTrackingOpacity(1);
+          entry.smoothRoot.visible = true;
+          continue;
+        }
         if (entry.lossStartedAt && entry.smoothRoot.visible) {
           const lostFor = performance.now() - entry.lossStartedAt;
           const fadeProgress = Math.max(0, Math.min(1, (lostFor - this.lossHoldMs) / this.lossFadeMs));
@@ -277,41 +292,28 @@ export class TrackingEngine {
     }
   }
 
-  updateRoughDetection(elapsed) {
-    if (!this.scanContext || elapsed - this.roughLastCheck < 0.18) return;
-    this.roughLastCheck = elapsed;
-
+  updateModelDetection(elapsed) {
     const exactActive = this.activeEntry && !this.activeEntry.rough;
     if (exactActive) {
-      this.roughStableFrames = 0;
-      this.hideRoughFallback();
+      this.modelDetector.reset();
+      this.hideModelFallbacks();
       return;
     }
+    if (this.gameLockedKey) return;
 
-    const video = this.roughVideo || this.getCaptureSources().video;
+    const video = this.modelVideo || this.getCaptureSources().video;
     if (!video || video.readyState < 2 || !video.videoWidth) return;
-    this.roughVideo = video;
-
-    let imageData;
-    try {
-      this.scanContext.drawImage(video, 0, 0, this.scanCanvas.width, this.scanCanvas.height);
-      imageData = this.scanContext.getImageData(0, 0, this.scanCanvas.width, this.scanCanvas.height);
-    } catch {
-      return;
-    }
-
-    const match = this.findPurpleArea(imageData);
+    this.modelVideo = video;
+    const match = this.modelDetector.scan(video, elapsed);
     if (match) {
-      this.roughStableFrames = Math.min(6, this.roughStableFrames + 1);
-      this.roughLastSeen = elapsed;
-      if (this.roughStableFrames >= 3) this.showRoughFallback(match);
+      this.modelLastSeen = elapsed;
+      this.showModelFallback(match);
       return;
     }
 
-    this.roughStableFrames = Math.max(0, this.roughStableFrames - 1);
-    if (this.activeEntry?.rough && elapsed - this.roughLastSeen > this.roughHoldSeconds) {
-      const { key, config } = this.roughEntry;
-      this.hideRoughFallback();
+    if (this.activeEntry?.rough && elapsed - this.modelLastSeen > this.modelHoldSeconds) {
+      const { key, config } = this.activeEntry;
+      this.hideModelFallbacks();
       this.activeEntry = null;
       this.activeKey = null;
       this.effects.setActive(null);
@@ -319,51 +321,12 @@ export class TrackingEngine {
     }
   }
 
-  findPurpleArea(imageData) {
-    const { data, width, height } = imageData;
-    let count = 0;
-    let sumX = 0;
-    let sumY = 0;
-    let minX = width;
-    let minY = height;
-    let maxX = 0;
-    let maxY = 0;
-
-    for (let y = 0; y < height; y += 2) {
-      for (let x = 0; x < width; x += 2) {
-        const offset = (y * width + x) * 4;
-        const red = data[offset];
-        const green = data[offset + 1];
-        const blue = data[offset + 2];
-        const chroma = Math.max(red, green, blue) - Math.min(red, green, blue);
-        const purple = blue > 72
-          && red > 62
-          && blue > green * 1.08
-          && red > green * 0.9
-          && chroma > 14;
-        if (!purple) continue;
-        count += 1;
-        sumX += x;
-        sumY += y;
-        minX = Math.min(minX, x);
-        minY = Math.min(minY, y);
-        maxX = Math.max(maxX, x);
-        maxY = Math.max(maxY, y);
-      }
-    }
-
-    const spreadX = maxX - minX;
-    const spreadY = maxY - minY;
-    if (count < 82 || spreadX < 14 || spreadY < 10) return null;
-    return {
-      x: sumX / count / width,
-      y: sumY / count / height,
-      coverage: count / (width * height / 4)
-    };
-  }
-
-  showRoughFallback(match) {
-    const entry = this.roughEntry;
+  showModelFallback(match) {
+    if (this.gameLockedKey && this.gameLockedKey !== match.key) return;
+    if (this.effects.collectedStamps?.has(match.key)) return;
+    const entry = this.roughEntries.get(match.key);
+    if (!entry) return;
+    this.hideModelFallbacks(entry);
     const depth = 4;
     const projection = this.camera.projectionMatrix.elements;
     const x = (match.x - 0.5) * 2 * depth / projection[0];
@@ -376,16 +339,65 @@ export class TrackingEngine {
       entry.world.visible = true;
       entry.controller.reset();
     }
+    entry.tracked = true;
     if (this.activeEntry !== entry) {
       this.activeEntry = entry;
       this.activeKey = entry.key;
+      this.gameLockedKey = entry.key;
       this.effects.setActive(entry.key);
-      this.callbacks.onTargetFound?.(entry.key, entry.config, { rough: true });
+      this.callbacks.onTargetFound?.(entry.key, entry.config, {
+        rough: true,
+        confidence: match.confidence
+      });
     }
   }
 
-  hideRoughFallback() {
-    if (this.roughEntry) this.roughEntry.world.visible = false;
+  hideModelFallbacks(except = null) {
+    for (const entry of this.roughEntries.values()) {
+      if (entry === except) continue;
+      entry.world.visible = false;
+      entry.tracked = false;
+    }
+  }
+
+  releaseGameLock(key) {
+    if (this.gameLockedKey !== key) return;
+    this.gameLockedKey = null;
+    this.modelDetector.reset();
+    this.modelLastSeen = this.clock.elapsedTime;
+    if (this.releaseTimer) clearTimeout(this.releaseTimer);
+    const entry = this.activeEntry;
+    if (!entry || entry.key !== key || entry.tracked) return;
+    this.releaseTimer = setTimeout(() => {
+      this.releaseTimer = null;
+      if (this.gameLockedKey || this.activeEntry !== entry || entry.tracked) return;
+      entry.controller.setTrackingOpacity?.(0);
+      if (entry.smoothRoot) entry.smoothRoot.visible = false;
+      if (entry.world) entry.world.visible = false;
+      this.activeEntry = null;
+      this.activeKey = null;
+      this.effects.setActive(null);
+      this.callbacks.onTargetLost?.(key, entry.config);
+    }, 900);
+  }
+
+  async tuneCameraForKiosk(video) {
+    const track = video?.srcObject?.getVideoTracks?.()[0];
+    if (!track?.applyConstraints) return;
+    try {
+      const capabilities = track.getCapabilities?.() || {};
+      const continuous = {};
+      for (const name of ['exposureMode', 'focusMode', 'whiteBalanceMode']) {
+        if (Array.isArray(capabilities[name]) && capabilities[name].includes('continuous')) {
+          continuous[name] = 'continuous';
+        }
+      }
+      const constraints = { frameRate: { ideal: 30, max: 30 } };
+      if (Object.keys(continuous).length) constraints.advanced = [continuous];
+      await track.applyConstraints(constraints);
+    } catch (error) {
+      console.info('カメラの常設向け自動調整は端末標準設定を使用します。', error);
+    }
   }
 
   getCaptureSources() {
@@ -400,7 +412,11 @@ export class TrackingEngine {
       this.mindar.stop();
       this.started = false;
     }
-    this.hideRoughFallback();
+    this.hideModelFallbacks();
+    this.modelDetector.reset();
+    this.gameLockedKey = null;
+    if (this.releaseTimer) clearTimeout(this.releaseTimer);
+    this.releaseTimer = null;
     this.entries.forEach((entry) => {
       if (entry.lossTimer) clearTimeout(entry.lossTimer);
       if (entry.stateTimer) clearTimeout(entry.stateTimer);

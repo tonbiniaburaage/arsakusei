@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SoundController } from './sound-controller.js?v=20260801-stable-v12';
+import { SoundController } from './sound-controller.js?v=20261010-ipad-models1';
 
 const GAME_TOTALS = {
   jellyfish: 5,
@@ -663,7 +663,7 @@ export class EffectController {
     if (this.game.phase.endsWith('celebrate')) this.drawCelebration();
     if (this.game.phase === 'light-collect') {
       this.drawLightAbsorption();
-      this.drawGameLabel('光る模型にスマホを向けて、海の光を集めよう！', '✦');
+      this.drawGameLabel('光る模型をカメラに映して、海の光を集めよう！', '✦');
     }
     if (this.game.phase === 'stamp') {
       this.drawStampAward();

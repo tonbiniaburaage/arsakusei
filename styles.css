@@ -34,6 +34,8 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   width: 100%;
   height: 100%;
   object-fit: cover;
+  /* 暗い展示環境でも模型と背景を見分けやすくする。認識側は別途自動補正する。 */
+  filter: brightness(1.18) contrast(1.07) saturate(1.08);
 }
 
 #effects {

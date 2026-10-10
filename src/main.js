@@ -1,8 +1,8 @@
-import { AREngine } from './ar-engine.js?v=20260801-stable-v12';
-import { TrackingEngine } from './tracking-engine.js?v=20260801-stable-v12';
-import { EffectController } from './effect-controller.js?v=20260801-stable-v12';
-import { PhotoController } from './photo-controller.js?v=20260801-stable-v12';
-import { CREATURE_ORDER, CREATURES, qualityProfile } from './creature-config.js?v=20260801-stable-v12';
+import { AREngine } from './ar-engine.js?v=20261010-ipad-models1';
+import { TrackingEngine } from './tracking-engine.js?v=20261010-ipad-models1';
+import { EffectController } from './effect-controller.js?v=20261010-ipad-models1';
+import { PhotoController } from './photo-controller.js?v=20261010-ipad-models1';
+import { CREATURE_ORDER, CREATURES, qualityProfile } from './creature-config.js?v=20261010-ipad-models1';
 
 const stage = document.querySelector('#stage');
 const effectsCanvas = document.querySelector('#effects');
@@ -24,6 +24,7 @@ let starting = false;
 let demoSequenceActive = false;
 let demoTransitionTimer = null;
 let autoResetTimer = null;
+let gameLockReleaseTimer = null;
 
 effects.setGameCallbacks({
   onStateChange({ key, phase, count, total, remaining }) {
@@ -36,15 +37,22 @@ effects.setGameCallbacks({
     if (phase === 'whale-celebrate') status.textContent = 'クジラ、クリア！';
     if (phase === 'turtle-polish') status.textContent = `甲羅をぐるぐる磨こう！　${count}/${total}秒`;
     if (phase === 'turtle-celebrate') status.textContent = 'カメ、クリア！';
-    if (phase === 'light-collect') status.textContent = '光る模型にスマホを向けて、海の光を集めよう！';
+    if (phase === 'light-collect') status.textContent = '光る模型をカメラに映して、海の光を集めよう！';
     if (phase === 'stamp') {
       status.textContent = remaining > 0
         ? '次の海の生き物にカメラを向けてみよう！'
         : `${config?.label || '海のなかま'}の光るスタンプをゲット！`;
     }
-    if (phase === 'complete') status.textContent = 'スタンプを集めて、海の光を完成させよう！';
+    if (phase === 'complete') {
+      status.textContent = 'スタンプを集めて、海の光を完成させよう！';
+      clearTimeout(gameLockReleaseTimer);
+      gameLockReleaseTimer = setTimeout(() => engine?.releaseGameLock?.(key), 900);
+    }
     if (phase === 'all-complete') status.textContent = '3つの海の光がそろったよ！';
-    if (phase === 'finished') status.textContent = 'おしまい';
+    if (phase === 'finished') {
+      status.textContent = 'おしまい';
+      engine?.releaseGameLock?.(key);
+    }
     handleDemoStateChange(key, phase);
   },
   onAutoReset() {
@@ -136,7 +144,7 @@ async function startExperience({ tracking, config, auto = false }) {
       trackingGuide.hidden = false;
       activeCreature.hidden = true;
       photoController.setEnabled(false);
-      status.textContent = '光る模型にスマホを向けて、海の光を集めよう！';
+      status.textContent = '光る模型をカメラに映して、海の光を集めよう！';
     } else {
       activeCreature.textContent = `${config.icon} ${config.label}`;
       activeCreature.hidden = false;
@@ -170,7 +178,7 @@ async function startExperience({ tracking, config, auto = false }) {
 function handleTargetFound(key, config, detail = {}) {
   trackingGuide.hidden = true;
   activeCreature.textContent = detail.rough
-    ? `${config.icon} ${config.label}をかんたん認識`
+    ? `${config.icon} ${config.label}の模型を認識`
     : `${config.icon} ${config.label}を認識`;
   activeCreature.hidden = false;
   photoController.setEnabled(true);
@@ -182,7 +190,7 @@ function handleTargetLost(key, config) {
   activeCreature.hidden = true;
   trackingGuide.hidden = false;
   photoController.setEnabled(false);
-  status.textContent = `${config.label}のカードをもう一度映してください`;
+  status.textContent = '次の光る模型をカメラに映してください';
 }
 
 function leaveWelcome() {
@@ -205,10 +213,13 @@ function restartFromBeginning() {
   const activeKey = effects.activeKey;
   engine?.reset?.();
   effects.resetProgress(activeKey);
-  if (!activeKey) status.textContent = '光る模型にスマホを向けて、海の光を集めよう！';
+  if (!activeKey) status.textContent = '光る模型をカメラに映して、海の光を集めよう！';
 }
 
-addEventListener('pagehide', () => engine?.stop?.());
+addEventListener('pagehide', () => {
+  clearTimeout(gameLockReleaseTimer);
+  engine?.stop?.();
+});
 
 const pageOptions = new URLSearchParams(location.search);
 if (pageOptions.get('demo') !== '1') {
