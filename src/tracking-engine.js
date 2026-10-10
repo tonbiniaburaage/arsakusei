@@ -53,8 +53,8 @@ export class TrackingEngine {
       uiScanning: 'no',
       uiError: 'no'
     });
-    // 高解像度でマーカーを読めるiPadの外カメラ（背面）を明示的に使う。
-    this.mindar.shouldFaceUser = false;
+    // 展示中に画面を見ながら模型をかざせるよう、iPadの内カメラを明示的に使う。
+    this.mindar.shouldFaceUser = true;
 
     this.renderer = this.mindar.renderer;
     this.scene = this.mindar.scene;
