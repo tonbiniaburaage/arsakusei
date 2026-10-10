@@ -137,6 +137,7 @@ export class TrackingEngine {
       this.activeKey = key;
       this.activeEntry = entry;
       this.gameLockedKey = key;
+      this.effects.clearMarkerAnchor?.();
       if (!resumedDuringGrace && !handoffEntry && !resumeGame) controller.reset();
       this.effects.setActive(key);
       if (!resumedDuringGrace && !handoffEntry) this.callbacks.onTargetFound?.(key, config);
@@ -350,12 +351,15 @@ export class TrackingEngine {
       this.activeEntry = entry;
       this.activeKey = entry.key;
       this.gameLockedKey = entry.key;
+      this.effects.setMarkerAnchor?.(entry.key, entry.config, match);
       this.effects.setActive(entry.key);
       this.callbacks.onTargetFound?.(entry.key, entry.config, {
         marker: true,
         tagId: match.tagId,
         confidence: match.confidence
       });
+    } else {
+      this.effects.setMarkerAnchor?.(entry.key, entry.config, match);
     }
   }
 

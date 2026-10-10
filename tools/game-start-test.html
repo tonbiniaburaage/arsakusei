@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <base href="../">
+  <title>Marker game start test</title>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="effects"></canvas>
+  <div id="game-controls"></div>
+  <pre id="result">testing...</pre>
+  <script type="module">
+    import * as THREE from 'three';
+    import { EffectController } from './src/effect-controller.js?v=20261010-marker-game2';
+    import { CREATURES } from './src/creature-config.js?v=20261010-marker-game2';
+
+    const canvas = document.querySelector('#effects');
+    const result = document.querySelector('#result');
+    const effects = new EffectController(canvas, { pixelRatio: 1, spawnRate: 0, maxParticles: 0 });
+    effects.connect(new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 100), []);
+
+    const expected = {
+      jellyfish: 'jelly-rhythm',
+      whale: 'whale-charge',
+      turtle: 'turtle-polish'
+    };
+    const checks = [];
+    for (const [key, phase] of Object.entries(expected)) {
+      effects.reset();
+      effects.setMarkerAnchor(key, CREATURES[key], { x: 0.5, y: 0.55, coverage: 0.02 });
+      effects.setActive(key);
+      effects.update(1.05);
+      checks.push({ key, expected: phase, actual: effects.game.phase, passed: effects.game.phase === phase });
+    }
+    const passed = checks.every((check) => check.passed);
+    result.dataset.passed = String(passed);
+    result.textContent = JSON.stringify({ passed, checks }, null, 2);
+    document.title = passed ? 'PASS: marker game start' : 'FAIL: marker game start';
+  </script>
+</body>
+</html>

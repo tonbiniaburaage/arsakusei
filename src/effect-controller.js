@@ -32,6 +32,7 @@ export class EffectController {
     this.activeElapsed = 0;
     this.gameAnchor = null;
     this.gameConfig = null;
+    this.markerAnchor = null;
     this.gameLayer = document.querySelector('#game-controls');
     this.gameCallbacks = {};
     this.sound = new SoundController();
@@ -77,6 +78,21 @@ export class EffectController {
   setActive(key) {
     if (this.activeKey !== key) this.restartGame(key);
     this.activeKey = key;
+    if (!key) this.markerAnchor = null;
+  }
+
+  setMarkerAnchor(key, config, { x = 0.5, y = 0.5, coverage = 0 } = {}) {
+    this.markerAnchor = {
+      key,
+      config,
+      x: Math.max(0.08, Math.min(0.92, x)),
+      y: Math.max(0.14, Math.min(0.86, y)),
+      coverage: Math.max(0, coverage)
+    };
+  }
+
+  clearMarkerAnchor(key = null) {
+    if (!key || this.markerAnchor?.key === key) this.markerAnchor = null;
   }
 
   setGameCallbacks(callbacks) {
@@ -168,6 +184,7 @@ export class EffectController {
     this.activeElapsed = 0;
     this.gameAnchor = null;
     this.gameConfig = null;
+    this.markerAnchor = null;
     this.game = this.createGameState(null);
     this.canvas.classList.remove('is-interactive');
     this.clearGameControls();
@@ -208,6 +225,19 @@ export class EffectController {
         const chance = delta * (this.photoMode ? 38 : 18) * this.profile.spawnRate;
         if (Math.random() < chance) this.spawnAmbient(screen, config, key);
       });
+    }
+
+    // AprilTag recognition supplies a stable 2D screen position directly. Use it as
+    // the game anchor even when the camera-attached Three.js sprite has not produced
+    // a projectable world position yet (notably on iPad Safari's first AR frames).
+    if (this.markerAnchor?.key === this.activeKey) {
+      const markerSize = Math.sqrt(this.markerAnchor.coverage) * Math.min(this.width, this.height) * 3.2;
+      this.gameAnchor = {
+        x: this.markerAnchor.x * this.width,
+        y: this.markerAnchor.y * this.height,
+        size: Math.max(72, Math.min(260, markerSize || 120))
+      };
+      this.gameConfig = this.markerAnchor.config;
     }
 
     this.updateGame(delta);

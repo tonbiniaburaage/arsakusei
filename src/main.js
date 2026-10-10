@@ -1,8 +1,8 @@
-import { AREngine } from './ar-engine.js?v=20261010-apriltag1';
-import { TrackingEngine } from './tracking-engine.js?v=20261010-apriltag1';
-import { EffectController } from './effect-controller.js?v=20261010-apriltag1';
-import { PhotoController } from './photo-controller.js?v=20261010-apriltag1';
-import { CREATURE_ORDER, CREATURES, qualityProfile } from './creature-config.js?v=20261010-apriltag1';
+import { AREngine } from './ar-engine.js?v=20261010-marker-game2';
+import { TrackingEngine } from './tracking-engine.js?v=20261010-marker-game2';
+import { EffectController } from './effect-controller.js?v=20261010-marker-game2';
+import { PhotoController } from './photo-controller.js?v=20261010-marker-game2';
+import { CREATURE_ORDER, CREATURES, qualityProfile } from './creature-config.js?v=20261010-marker-game2';
 
 const stage = document.querySelector('#stage');
 const effectsCanvas = document.querySelector('#effects');
