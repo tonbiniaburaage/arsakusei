@@ -19,8 +19,8 @@
   <pre id="result">testing...</pre>
   <script type="module">
     import * as THREE from 'three';
-    import { EffectController } from './src/effect-controller.js?v=20261010-marker-game2';
-    import { CREATURES } from './src/creature-config.js?v=20261010-marker-game2';
+    import { EffectController } from './src/effect-controller.js?v=20261010-marker-center3';
+    import { CREATURES } from './src/creature-config.js?v=20261010-marker-center3';
 
     const canvas = document.querySelector('#effects');
     const result = document.querySelector('#result');
@@ -35,10 +35,17 @@
     const checks = [];
     for (const [key, phase] of Object.entries(expected)) {
       effects.reset();
-      effects.setMarkerAnchor(key, CREATURES[key], { x: 0.5, y: 0.55, coverage: 0.02 });
+      effects.setMarkerAnchor(key, CREATURES[key], { x: 0.12, y: 0.84, coverage: 0.02 });
       effects.setActive(key);
       effects.update(1.05);
-      checks.push({ key, expected: phase, actual: effects.game.phase, passed: effects.game.phase === phase });
+      const centered = effects.gameAnchor.x === innerWidth / 2 && effects.gameAnchor.y === innerHeight / 2;
+      checks.push({
+        key,
+        expected: phase,
+        actual: effects.game.phase,
+        centered,
+        passed: effects.game.phase === phase && centered
+      });
     }
     const passed = checks.every((check) => check.passed);
     result.dataset.passed = String(passed);

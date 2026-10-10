@@ -81,12 +81,12 @@ export class EffectController {
     if (!key) this.markerAnchor = null;
   }
 
-  setMarkerAnchor(key, config, { x = 0.5, y = 0.5, coverage = 0 } = {}) {
+  setMarkerAnchor(key, config, { coverage = 0 } = {}) {
     this.markerAnchor = {
       key,
       config,
-      x: Math.max(0.08, Math.min(0.92, x)),
-      y: Math.max(0.14, Math.min(0.86, y)),
+      x: 0.5,
+      y: 0.5,
       coverage: Math.max(0, coverage)
     };
   }
@@ -227,9 +227,8 @@ export class EffectController {
       });
     }
 
-    // AprilTag recognition supplies a stable 2D screen position directly. Use it as
-    // the game anchor even when the camera-attached Three.js sprite has not produced
-    // a projectable world position yet (notably on iPad Safari's first AR frames).
+    // The AprilTag identifies the creature only. The game always appears at the
+    // center of the screen, independent of where the marker was held.
     if (this.markerAnchor?.key === this.activeKey) {
       const markerSize = Math.sqrt(this.markerAnchor.coverage) * Math.min(this.width, this.height) * 3.2;
       this.gameAnchor = {

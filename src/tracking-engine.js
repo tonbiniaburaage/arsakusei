@@ -335,12 +335,8 @@ export class TrackingEngine {
     if (!entry) return;
     this.hideModelFallbacks(entry);
     const depth = 4;
-    const projection = this.camera.projectionMatrix.elements;
-    const x = (match.x - 0.5) * 2 * depth / projection[0];
-    const y = (0.5 - match.y) * 2 * depth / projection[5];
-    const target = this.smoothingPosition.set(x, y, -depth);
+    const target = this.smoothingPosition.set(0, 0, -depth);
     if (!entry.world.visible) entry.world.position.copy(target);
-    else if (entry.world.position.distanceToSquared(target) > 0.0036) entry.world.position.lerp(target, 0.08);
 
     if (!entry.world.visible) {
       entry.world.visible = true;
