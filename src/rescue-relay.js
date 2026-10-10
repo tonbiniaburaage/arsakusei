@@ -61,12 +61,12 @@ export class RescueRelay {
           hand,
           velocity: { x: (hand.x - previous.x) / delta, y: (hand.y - previous.y) / delta }
         };
-      }).filter((entry) => Math.hypot(entry.velocity.x, entry.velocity.y) > 0.16);
+      }).filter((entry) => Math.hypot(entry.velocity.x, entry.velocity.y) > 0.12);
       const guided = new Set();
-      let remaining = 8;
+      let remaining = 10;
       for (const entry of movedHands) {
         if (remaining <= 0) break;
-        remaining -= this.guideFish(entry.hand, entry.velocity, guided, Math.min(5, remaining));
+        remaining -= this.guideFish(entry.hand, entry.velocity, guided, Math.min(6, remaining));
         this.currents.push({
           x: entry.hand.x,
           y: entry.hand.y,
@@ -125,21 +125,21 @@ export class RescueRelay {
     this.updateUi();
   }
 
-  guideFish(hand, velocity, guided = new Set(), limit = 5) {
+  guideFish(hand, velocity, guided = new Set(), limit = 6) {
     const length = Math.max(0.001, Math.hypot(velocity.x, velocity.y));
     const directionX = velocity.x / length;
     const directionY = velocity.y / length;
     const candidates = this.fish
       .filter((fish) => fish.alive)
       .filter((fish) => !guided.has(fish))
-      .filter((fish) => Math.hypot(fish.x - hand.x, fish.y - hand.y) <= 0.3)
+      .filter((fish) => Math.hypot(fish.x - hand.x, fish.y - hand.y) <= 0.36)
       .sort((a, b) => Math.hypot(a.x - hand.x, a.y - hand.y) - Math.hypot(b.x - hand.x, b.y - hand.y))
       .slice(0, limit);
     for (const fish of candidates) {
-      const force = 0.35 + this.random() * 0.11;
+      const force = 0.44 + this.random() * 0.12;
       fish.vx = directionX * force;
       fish.vy = directionY * force * 0.86;
-      fish.guided = 1;
+      fish.guided = 1.2;
       guided.add(fish);
     }
     return candidates.length;
@@ -148,7 +148,7 @@ export class RescueRelay {
   updateFish(delta) {
     this.playTime += delta;
     for (const current of this.currents) current.age += delta;
-    this.currents = this.currents.filter((current) => current.age < 0.7);
+    this.currents = this.currents.filter((current) => current.age < 0.85);
     const assist = Math.min(1, Math.max(0, (this.playTime - 20) / 15));
     const ring = { x: 0.8, y: 0.57, radius: 0.12 + assist * 0.025 };
     for (const fish of this.fish) {
@@ -165,14 +165,14 @@ export class RescueRelay {
       fish.vx *= Math.pow(0.58, delta);
       fish.vy *= Math.pow(0.58, delta);
       const speed = Math.hypot(fish.vx, fish.vy);
-      const maxSpeed = fish.guided > 0 ? 0.5 : 0.085 + assist * 0.025;
+      const maxSpeed = fish.guided > 0 ? 0.58 : 0.085 + assist * 0.025;
       if (speed > maxSpeed) {
         fish.vx = fish.vx / speed * maxSpeed;
         fish.vy = fish.vy / speed * maxSpeed;
       }
       fish.x += fish.vx * delta;
       fish.y += fish.vy * delta;
-      fish.guided = Math.max(0, fish.guided - delta * 0.8);
+      fish.guided = Math.max(0, fish.guided - delta * 0.55);
       if (fish.x < 0.03 || fish.x > 0.97) fish.vx *= -1;
       if (fish.y < 0.1 || fish.y > 0.92) fish.vy *= -1;
       fish.x = Math.max(0.025, Math.min(0.975, fish.x));
@@ -247,7 +247,7 @@ export class RescueRelay {
       const length = Math.max(0.001, Math.hypot(current.vx, current.vy));
       const dx = current.vx / length;
       const dy = current.vy / length;
-      const fade = Math.max(0, 1 - current.age / 0.7);
+      const fade = Math.max(0, 1 - current.age / 0.85);
       const trail = Math.min(width, height) * 0.16;
       ctx.strokeStyle = `rgba(190, 250, 255, ${fade * 0.34})`;
       ctx.lineWidth = Math.max(2, Math.min(width, height) * 0.004 * fade);

@@ -23,6 +23,9 @@ export class AmbientOcean {
     this.motionBoost = 0;
     this.swipeCooldown = 0;
     this.gatheringGrace = 0;
+    this.gatheringFields = [];
+    this.splashCooldown = 0;
+    this.splashTransformations = [];
     this.swimTime = 0;
     this.whaleSprite = typeof Image === 'undefined' ? null : new Image();
     if (this.whaleSprite) this.whaleSprite.src = new URL('../assets/ui/whale-silhouette.png', import.meta.url).href;
@@ -114,6 +117,7 @@ export class AmbientOcean {
     ctx.save();
     this.drawHandFields(ctx, width, height, time);
     this.drawBoidSchools(ctx, width, height, this.swimTime, delta);
+    this.drawTrailFish(ctx, width, height, time, delta);
     this.drawVortexSchool(ctx, width, height, time);
     this.drawGardenEels(ctx, width, height, time, delta);
     this.drawWalkingCrabs(ctx, width, height, time, delta);
@@ -138,12 +142,34 @@ export class AmbientOcean {
     this.handVelocity.x += (velocity.x - this.handVelocity.x) * 0.68;
     this.handVelocity.y += (velocity.y - this.handVelocity.y) * 0.68;
     this.handCharge += (charge - this.handCharge) * 0.38;
-    if (this.hands.some((hand) => hand.gathering)) this.gatheringGrace = 0.72;
+    const gatheringHands = this.hands.filter((hand) => hand.gathering).slice(0, 3);
+    if (gatheringHands.length) {
+      const availableFields = [...this.gatheringFields];
+      this.gatheringFields = gatheringHands.map((hand) => {
+        if (!availableFields.length) return { x: hand.x, y: hand.y, size: hand.size, age: 0 };
+        let nearestIndex = 0;
+        let nearestDistance = Infinity;
+        for (let index = 0; index < availableFields.length; index += 1) {
+          const candidate = availableFields[index];
+          const distance = Math.hypot(candidate.x - hand.x, candidate.y - hand.y);
+          if (distance < nearestDistance) {
+            nearestDistance = distance;
+            nearestIndex = index;
+          }
+        }
+        const matched = availableFields.splice(nearestIndex, 1)[0];
+        return { x: hand.x, y: hand.y, size: hand.size, age: nearestDistance < 0.3 ? matched.age : 0 };
+      });
+      this.gatheringGrace = 0.8;
+    } else if (this.gatheringGrace <= 0) {
+      this.gatheringFields = [];
+    }
     const lateralSwipe = Math.abs(this.handVelocity.x) > 0.5
       && Math.abs(this.handVelocity.x) > Math.abs(this.handVelocity.y) * 1.35;
     if (lateralSwipe && speed > 0.56 && this.swipeCooldown <= 0 && this.hands.length) {
       if (this.gatheringGrace > 0) this.scatterGatheredFish(this.hands[0], this.handVelocity);
       else this.pushNearbyFish(this.hands[0], this.handVelocity);
+      if (this.splashCooldown <= 0) this.startSplashTransformation(this.hands[0], this.handVelocity);
       this.swipeCooldown = 0.16;
     }
     if (speed > 0.68 && this.bubbleBurstCooldown <= 0 && this.hands.length && this.random() < 0.34) {
@@ -196,6 +222,46 @@ export class AmbientOcean {
       fish.touch = 1;
     }
     this.motionBoost = 1;
+  }
+
+  startSplashTransformation(hand, velocity) {
+    const speed = Math.max(0.001, Math.hypot(velocity.x, velocity.y));
+    const dx = velocity.x / speed;
+    const dy = velocity.y / speed;
+    const normalX = -dy;
+    const normalY = dx;
+    const fish = Array.from({ length: 20 }, (_, index) => {
+      const fan = (index / 19 - 0.5) * 1.18 + (this.random() - 0.5) * 0.18;
+      const heading = Math.atan2(dy, dx) + fan;
+      const launchSpeed = 0.075 + this.random() * 0.085;
+      const offset = (this.random() - 0.5) * 0.07;
+      return {
+        x: hand.x + normalX * offset,
+        y: hand.y + normalY * offset,
+        vx: Math.cos(heading) * launchSpeed,
+        vy: Math.sin(heading) * launchSpeed,
+        size: 0.72 + this.random() * 0.58,
+        tone: 0.32 + this.random() * 0.66,
+        phase: this.random() * TAU,
+        delay: index * 0.016 + this.random() * 0.12
+      };
+    });
+    this.splashTransformations.push({
+      x: hand.x,
+      y: hand.y,
+      dx,
+      dy,
+      normalX,
+      normalY,
+      age: 0,
+      life: 5.6,
+      phase: this.random() * TAU,
+      fish
+    });
+    if (this.splashTransformations.length > 3) {
+      this.splashTransformations.splice(0, this.splashTransformations.length - 3);
+    }
+    this.splashCooldown = 1.25;
   }
 
   burstNearbyBubbles(hand) {
@@ -267,6 +333,8 @@ export class AmbientOcean {
     this.interactionLockout = Math.max(0, this.interactionLockout - delta);
     this.swipeCooldown = Math.max(0, this.swipeCooldown - delta);
     this.gatheringGrace = Math.max(0, this.gatheringGrace - delta);
+    for (const field of this.gatheringFields) field.age += delta;
+    this.splashCooldown = Math.max(0, this.splashCooldown - delta);
     this.bubbleBurstCooldown = Math.max(0, this.bubbleBurstCooldown - delta);
     if (this.vortex) {
       this.vortex.age += delta;
@@ -415,6 +483,13 @@ export class AmbientOcean {
       ctx.beginPath();
       ctx.arc(x, y, radius * (0.62 + Math.sin(time * 3.1) * 0.05), 0, TAU);
       ctx.stroke();
+      if (hand.gathering) {
+        ctx.strokeStyle = `rgba(217, 255, 255, ${0.68 + Math.sin(time * 6) * 0.12})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(x, y, radius * 0.82, -Math.PI * 0.18, Math.PI * 1.36);
+        ctx.stroke();
+      }
     }
 
     if (this.hands.length === 2 && this.handCharge > 0.02) {
@@ -480,13 +555,28 @@ export class AmbientOcean {
   drawBoidSchools(ctx, width, height, time, delta) {
     const dt = Math.min(0.034, Math.max(0.008, delta));
     const aspect = width / Math.max(1, height);
-    const attractingHands = this.hands.filter((hand) => !hand.suppressAttraction);
+    const allFish = this.boidSchools.flatMap((school) => school.fish);
+    const fastGatherTargets = new Map();
+    const fastFields = this.gatheringFields.filter((field) => field.age < 2);
+    const matureFields = this.gatheringFields.filter((field) => field.age >= 2);
+    for (const field of fastFields) {
+      const candidates = allFish
+        .filter((fish) => !fastGatherTargets.has(fish))
+        .sort((first, second) => {
+          const firstDistance = Math.hypot((first.x - field.x) * aspect, first.y - field.y);
+          const secondDistance = Math.hypot((second.x - field.x) * aspect, second.y - field.y);
+          return firstDistance - secondDistance;
+        })
+        .slice(0, 20);
+      for (const fish of candidates) fastGatherTargets.set(fish, field);
+    }
 
     for (const school of this.boidSchools) {
       const targetX = school.x + Math.sin(time * 0.075 + school.phase) * 0.2;
       const targetY = school.y + Math.cos(time * 0.09 + school.phase) * 0.075;
 
       for (const fish of school.fish) {
+        let gatheringBoost = 0;
         let separationX = 0;
         let separationY = 0;
         let alignmentX = 0;
@@ -528,21 +618,41 @@ export class AmbientOcean {
         ax += (targetX - fish.x) * 0.022 + school.direction * 0.0028;
         ay += (targetY - fish.y) * 0.018;
 
-        for (const hand of attractingHands) {
-          const dx = hand.x - fish.x;
-          const dy = hand.y - fish.y;
+        const fastField = fastGatherTargets.get(fish);
+        if (fastField) {
+          const dx = fastField.x - fish.x;
+          const dy = fastField.y - fish.y;
           const distance = Math.max(0.004, Math.hypot(dx * aspect, dy));
-          if (distance > 0.62) continue;
           if (distance < 0.075) {
             const touchForce = (0.075 - distance) * 4.8;
             ax -= dx / distance * touchForce;
             ay -= dy / distance * touchForce;
             fish.touch = 1;
           } else {
-            const pull = (1 - distance / 0.62) * 2.4;
+            const pull = Math.max(0.36, 1 - distance / 1.24) * 3.35;
             ax += dx / distance * pull;
             ay += dy / distance * pull;
           }
+          gatheringBoost = 0.62;
+        } else if (matureFields.length) {
+          let nearest = matureFields[0];
+          let nearestDistance = Math.hypot((nearest.x - fish.x) * aspect, nearest.y - fish.y);
+          for (const field of matureFields.slice(1)) {
+            const distance = Math.hypot((field.x - fish.x) * aspect, field.y - fish.y);
+            if (distance < nearestDistance) {
+              nearest = field;
+              nearestDistance = distance;
+            }
+          }
+          const dx = nearest.x - fish.x;
+          const dy = nearest.y - fish.y;
+          const distance = Math.max(0.004, nearestDistance);
+          if (distance > 0.085) {
+            const pull = Math.max(0.018, 1 - distance / 1.4) * 0.15;
+            ax += dx / distance * pull;
+            ay += dy / distance * pull;
+          }
+          gatheringBoost = 0.08;
         }
 
         if (this.current.strength > 0) {
@@ -570,8 +680,7 @@ export class AmbientOcean {
         let vy = fish.vy + ay * dt;
         const speed = Math.hypot(vx, vy);
         const minSpeed = (0.018 + school.scale * 0.009) * 1.5;
-        const gathering = attractingHands.length ? 0.5 : 0;
-        const maxSpeed = 0.165 + gathering + this.motionBoost * 0.1 + fish.touch * 0.055 + fish.swipe * 0.5;
+        const maxSpeed = 0.165 + gatheringBoost + this.motionBoost * 0.1 + fish.touch * 0.055 + fish.swipe * 0.5;
         if (speed > maxSpeed) {
           vx = vx / speed * maxSpeed;
           vy = vy / speed * maxSpeed;
@@ -761,6 +870,36 @@ export class AmbientOcean {
     fish.lastX = baseX + fish.ix;
     fish.lastY = baseY + fish.iy;
     return { x: fish.lastX, y: fish.lastY, vx: fish.ivx, vy: fish.ivy };
+  }
+
+  drawTrailFish(ctx, width, height, time, delta) {
+    const unit = Math.min(width, height);
+    for (const splash of this.splashTransformations) {
+      splash.age += delta;
+      splash.life -= delta;
+      for (const fish of splash.fish) {
+        const fishAge = splash.age - fish.delay;
+        if (fishAge <= 0) continue;
+        fish.vx += splash.dx * delta * 0.003;
+        fish.vy += Math.sin(time * 1.2 + fish.phase) * delta * 0.002;
+        fish.x += fish.vx * delta;
+        fish.y += fish.vy * delta;
+        const appear = Math.min(1, fishAge / 0.24);
+        const fade = Math.min(1, splash.life / 0.8);
+        const heading = Math.atan2(fish.vy, fish.vx);
+        this.drawFish(
+          ctx,
+          fish.x * width,
+          fish.y * height,
+          heading,
+          unit * 0.0065 * fish.size,
+          fish.tone,
+          appear * fade * 0.9,
+          time * 7.2 + fish.phase
+        );
+      }
+    }
+    this.splashTransformations = this.splashTransformations.filter((splash) => splash.life > 0);
   }
 
   drawFish(ctx, x, y, rotation, size, tone, alpha, swimPhase = 0) {

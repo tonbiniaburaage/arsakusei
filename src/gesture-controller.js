@@ -1,7 +1,7 @@
 import { FilesetResolver, GestureRecognizer } from '../vendor/mediapipe/vision_bundle.mjs';
 
 const PALM_LANDMARKS = [0, 5, 9, 13, 17];
-const SAMPLE_INTERVAL_MS = 52;
+const SAMPLE_INTERVAL_MS = 66;
 const CIRCLE_WINDOW_MS = 1450;
 const CIRCLE_TRIGGER_RADIANS = Math.PI * 1.52;
 const SPECIAL_CHARGE_SECONDS = 2;
@@ -104,10 +104,27 @@ export class GestureController {
     return (result?.landmarks || []).map((points, index) => ({
       ...this.palmCenter(points),
       size: this.handSize(points),
+      openness: this.handOpenness(points),
       gesture: result?.gestures?.[index]?.[0]?.categoryName || 'None',
       gestureScore: result?.gestures?.[index]?.[0]?.score || 0,
       handedness: result?.handednesses?.[index]?.[0]?.categoryName || 'Unknown'
     }));
+  }
+
+  handOpenness(points) {
+    const wrist = points?.[0];
+    if (!wrist) return 0;
+    const fingerPairs = [[8, 5], [12, 9], [16, 13], [20, 17]];
+    let extended = 0;
+    for (const [tipIndex, baseIndex] of fingerPairs) {
+      const tip = points[tipIndex];
+      const base = points[baseIndex];
+      if (!tip || !base) continue;
+      const tipDistance = Math.hypot(tip.x - wrist.x, tip.y - wrist.y);
+      const baseDistance = Math.max(0.001, Math.hypot(base.x - wrist.x, base.y - wrist.y));
+      if (tipDistance > baseDistance * 1.24) extended += 1;
+    }
+    return extended / fingerPairs.length;
   }
 
   update(hands, now) {
@@ -205,19 +222,24 @@ export class GestureController {
       }
     }
 
-    const singleRaisedPalm = hands.length === 1
-      && hands[0].gesture === 'Open_Palm'
-      && hands[0].gestureScore >= 0.45
-      && hands[0].y <= 0.42;
+    const raisedPalms = hands
+      .filter((hand) => !chargingHands.has(hand))
+      .filter((hand) => hand.gesture !== 'Pointing_Up' && hand.gesture !== 'Victory')
+      .filter((hand) => {
+        const classifierOpen = hand.gesture === 'Open_Palm' && hand.gestureScore >= 0.24;
+        const shapeOpen = hand.openness >= 0.5;
+        return hand.y <= 0.57 && (classifierOpen || shapeOpen);
+      })
+      .slice(0, 3);
     this.callbacks.onInteraction?.({
       hands: hands.map((hand) => ({
         ...hand,
-        gathering: singleRaisedPalm,
-        // 魚を集めるのは、片手を上げて開いた手のひらを見せたときだけ。
+        gathering: raisedPalms.includes(hand),
+        // 最大3人分の上げた手のひらを集合点として扱う。
         // それ以外の手は、動いたときだけ水流として魚へ作用する。
         suppressAttraction: chargingHands.has(hand)
           || hand.gesture === 'Pointing_Up'
-          || !singleRaisedPalm
+          || !raisedPalms.includes(hand)
       })),
       velocity: this.smoothedVelocity,
       speed,

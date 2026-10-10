@@ -179,7 +179,7 @@ export class WaterRenderer {
     if (!this.available || !this.program) return false;
     for (const ripple of this.ripples) ripple.age += delta * (0.85 + ripple.intensity * 0.15);
     this.ripples = this.ripples.filter((ripple) => ripple.age < 4.2);
-    if (time - this.lastRenderAt < 1 / 30) return this.hasCameraFrame;
+    if (time - this.lastRenderAt < 1 / 24) return this.hasCameraFrame;
     this.lastRenderAt = time;
     const gl = this.gl;
     gl.useProgram(this.program);

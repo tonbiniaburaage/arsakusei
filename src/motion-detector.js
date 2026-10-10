@@ -3,8 +3,8 @@ export class CameraMotionDetector {
     this.video = video;
     this.onMotion = onMotion;
     this.canvas = document.createElement('canvas');
-    this.canvas.width = 128;
-    this.canvas.height = 72;
+    this.canvas.width = 112;
+    this.canvas.height = 63;
     this.context = this.canvas.getContext('2d', { alpha: false, willReadFrequently: true });
     this.previous = null;
     this.current = new Uint8Array(this.canvas.width * this.canvas.height);
@@ -16,7 +16,7 @@ export class CameraMotionDetector {
     this.stop();
     this.previous = null;
     this.current.fill(0);
-    this.timer = setInterval(() => this.sample(), 80);
+    this.timer = setInterval(() => this.sample(), 100);
   }
 
   stop() {

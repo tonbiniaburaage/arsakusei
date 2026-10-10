@@ -1,8 +1,8 @@
-import { AmbientOcean } from './ambient-ocean.js?v=20261009-pc12';
-import { CameraMotionDetector } from './motion-detector.js?v=20261009-pc12';
-import { GestureController } from './gesture-controller.js?v=20261009-pc12';
-import { WaterRenderer } from './water-renderer.js?v=20261009-pc12';
-import { RescueRelay } from './rescue-relay.js?v=20261009-pc12';
+import { AmbientOcean } from './ambient-ocean.js?v=20261010-pc16';
+import { CameraMotionDetector } from './motion-detector.js?v=20261010-pc16';
+import { GestureController } from './gesture-controller.js?v=20261010-pc16';
+import { WaterRenderer } from './water-renderer.js?v=20261010-pc16';
+import { RescueRelay } from './rescue-relay.js?v=20261010-pc16';
 
 const app = document.querySelector('#app');
 const video = document.querySelector('#camera');
@@ -86,6 +86,7 @@ const gestures = new GestureController(video, gestureElements, {
 let stream = null;
 let starting = false;
 let lastFrame = performance.now();
+let lastOceanFrame = 0;
 let gestureStatusTimer = null;
 let previewTimer = null;
 let cameraRecoveryTimer = null;
@@ -136,12 +137,12 @@ function startPreview() {
         eelLaunched = false;
         crabLaunched = false;
       }
-      const hand = { x: 0.34 + Math.sin(elapsed * 1.4) * 0.08, y: 0.57 + Math.cos(elapsed * 1.1) * 0.05, size: 0.2 };
+      const hand = { x: 0.28 + Math.sin(elapsed * 1.4) * 0.05, y: 0.3 + Math.cos(elapsed * 1.1) * 0.025, size: 0.2, gathering: true };
       applyInteractionState({
         hands: [
           hand,
-          { x: 0.67 + Math.sin(elapsed * 1.1) * 0.06, y: 0.36, size: 0.17 },
-          { x: 0.76 + Math.cos(elapsed * 1.25) * 0.05, y: 0.72, size: 0.19 }
+          { x: 0.52 + Math.sin(elapsed * 1.1) * 0.04, y: 0.3, size: 0.17, gathering: true },
+          { x: 0.76 + Math.cos(elapsed * 1.25) * 0.04, y: 0.31, size: 0.19, gathering: true }
         ],
         speed: 0.12
       });
@@ -293,8 +294,8 @@ function scheduleCameraRecovery() {
 async function requestCameraStream() {
   const preferred = {
     video: {
-      width: { ideal: 1920 },
-      height: { ideal: 1080 },
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
       frameRate: { ideal: 30, max: 30 }
     },
     audio: false
@@ -316,23 +317,27 @@ function showTemporaryStatus(message) {
 }
 
 function resize() {
-  const dpr = Math.min(devicePixelRatio || 1, 1.35);
+  const dpr = 1;
   canvas.width = Math.max(1, Math.round(innerWidth * dpr));
   canvas.height = Math.max(1, Math.round(innerHeight * dpr));
   canvas.style.width = `${innerWidth}px`;
   canvas.style.height = `${innerHeight}px`;
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
-  water.resize(innerWidth, innerHeight, dpr);
+  water.resize(innerWidth, innerHeight, 0.82);
 }
 
 function render(timestamp) {
   const delta = Math.min((timestamp - lastFrame) / 1000, 0.05);
   lastFrame = timestamp;
-  context.clearRect(0, 0, innerWidth, innerHeight);
   const waterHasCamera = water.render(timestamp / 1000, delta);
   if (!previewMode) app.classList.toggle('is-water-rendering', waterHasCamera);
-  ocean.draw(context, innerWidth, innerHeight, timestamp / 1000, delta);
-  rescue.draw(context, innerWidth, innerHeight, timestamp / 1000, delta);
+  if (!lastOceanFrame || timestamp - lastOceanFrame >= 1000 / 30) {
+    const oceanDelta = lastOceanFrame ? Math.min((timestamp - lastOceanFrame) / 1000, 0.05) : delta;
+    lastOceanFrame = timestamp;
+    context.clearRect(0, 0, innerWidth, innerHeight);
+    ocean.draw(context, innerWidth, innerHeight, timestamp / 1000, oceanDelta);
+    rescue.draw(context, innerWidth, innerHeight, timestamp / 1000, oceanDelta);
+  }
   requestAnimationFrame(render);
 }
 
