@@ -8,7 +8,8 @@
   <script type="importmap">
     {
       "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
       }
     }
   </script>
@@ -19,8 +20,9 @@
   <pre id="result">testing...</pre>
   <script type="module">
     import * as THREE from 'three';
-    import { EffectController } from './src/effect-controller.js?v=20261010-marker-center3';
-    import { CREATURES } from './src/creature-config.js?v=20261010-marker-center3';
+    import { EffectController } from './src/effect-controller.js?v=20261010-marker-images4';
+    import { CreatureController } from './src/creature-controller.js?v=20261010-marker-images4';
+    import { CREATURES } from './src/creature-config.js?v=20261010-marker-images4';
 
     const canvas = document.querySelector('#effects');
     const result = document.querySelector('#result');
@@ -35,16 +37,23 @@
     const checks = [];
     for (const [key, phase] of Object.entries(expected)) {
       effects.reset();
+      const world = new THREE.Group();
+      world.position.z = -4;
+      const controller = new CreatureController(world, CREATURES[key], { worldScale: 0.8 });
+      await controller.load();
+      effects.connect(effects.camera, [{ key, controller, rough: true }]);
       effects.setMarkerAnchor(key, CREATURES[key], { x: 0.12, y: 0.84, coverage: 0.02 });
       effects.setActive(key);
       effects.update(1.05);
       const centered = effects.gameAnchor.x === innerWidth / 2 && effects.gameAnchor.y === innerHeight / 2;
+      const imageVisible = effects.getMarkerCreatureImage() === controller.getEffectSources()[0].material.map.image;
       checks.push({
         key,
         expected: phase,
         actual: effects.game.phase,
         centered,
-        passed: effects.game.phase === phase && centered
+        imageVisible,
+        passed: effects.game.phase === phase && centered && imageVisible
       });
     }
     const passed = checks.every((check) => check.passed);

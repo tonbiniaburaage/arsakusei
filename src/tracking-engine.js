@@ -334,14 +334,10 @@ export class TrackingEngine {
     const entry = this.roughEntries.get(match.key);
     if (!entry) return;
     this.hideModelFallbacks(entry);
-    const depth = 4;
-    const target = this.smoothingPosition.set(0, 0, -depth);
-    if (!entry.world.visible) entry.world.position.copy(target);
-
-    if (!entry.world.visible) {
-      entry.world.visible = true;
-      entry.controller.reset();
-    }
+    if (!entry.tracked) entry.controller.reset();
+    // Marker games render the selected cutout on the 2D effects canvas so its
+    // position is always the screen center and never depends on a 3D projection.
+    entry.world.visible = false;
     entry.tracked = true;
     if (this.activeEntry !== entry) {
       this.activeEntry = entry;

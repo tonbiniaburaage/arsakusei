@@ -237,6 +237,7 @@ export class EffectController {
         size: Math.max(72, Math.min(260, markerSize || 120))
       };
       this.gameConfig = this.markerAnchor.config;
+      this.drawMarkerCreature();
     }
 
     this.updateGame(delta);
@@ -246,6 +247,43 @@ export class EffectController {
     if (this.particles.length > this.profile.maxParticles) {
       this.particles.splice(0, this.particles.length - this.profile.maxParticles);
     }
+  }
+
+  getMarkerCreatureImage() {
+    if (!this.markerAnchor || !this.activeKey) return null;
+    for (const { key, controller, rough } of this.controllers) {
+      if (key !== this.activeKey || !rough) continue;
+      for (const source of controller.getEffectSources()) {
+        const image = source.material?.map?.image;
+        if (image?.width && image?.height) return image;
+      }
+    }
+    return null;
+  }
+
+  drawMarkerCreature() {
+    const image = this.getMarkerCreatureImage();
+    if (!image) return false;
+    const maxWidth = Math.min(this.width * 0.58, 460);
+    const maxHeight = Math.min(this.height * 0.46, 460);
+    const scale = Math.min(maxWidth / image.width, maxHeight / image.height);
+    const width = image.width * scale;
+    const height = image.height * scale;
+    const bob = Math.sin(this.activeElapsed * 1.8) * 5;
+    const x = (this.width - width) / 2;
+    const y = (this.height - height) / 2 + bob;
+
+    this.ctx.save();
+    this.ctx.globalAlpha = 0.98;
+    this.ctx.shadowBlur = 24;
+    this.ctx.shadowColor = this.activeKey === 'whale'
+      ? 'rgba(88, 222, 255, .72)'
+      : this.activeKey === 'turtle'
+        ? 'rgba(112, 239, 215, .72)'
+        : 'rgba(207, 169, 255, .78)';
+    this.ctx.drawImage(image, x, y, width, height);
+    this.ctx.restore();
+    return true;
   }
 
   updateGame(delta) {
